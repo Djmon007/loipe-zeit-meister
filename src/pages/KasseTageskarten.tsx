@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Banknote, Upload, Camera, FileText, Loader2, Pencil } from 'lucide-react';
+import { Banknote, Pencil } from 'lucide-react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 
@@ -18,8 +18,6 @@ interface KasseEntry {
   datum: string;
   betrag: number;
   beschreibung: string | null;
-  beleg_url: string | null;
-  beleg_filename: string | null;
 }
 
 export default function KasseTageskarten() {
@@ -27,15 +25,12 @@ export default function KasseTageskarten() {
   const { toast } = useToast();
   const [entries, setEntries] = useState<KasseEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [saving, setSaving] = useState(false);
 
   // Form state
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [beschreibung, setBeschreibung] = useState('');
   const [betrag, setBetrag] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -44,7 +39,6 @@ export default function KasseTageskarten() {
   const [editBeschreibung, setEditBeschreibung] = useState('');
   const [editDate, setEditDate] = useState('');
 
-  // Calculate total
   const total = entries.reduce((sum, e) => sum + e.betrag, 0);
 
   const fetchEntries = useCallback(async () => {
@@ -52,7 +46,7 @@ export default function KasseTageskarten() {
 
     const { data, error } = await supabase
       .from('kasse_tageskarten')
-      .select('*')
+      .select('id, datum, betrag, beschreibung')
       .eq('user_id', user.id)
       .order('datum', { ascending: false })
       .limit(10);
@@ -70,110 +64,38 @@ export default function KasseTageskarten() {
     fetchEntries();
   }, [fetchEntries]);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const validTypes = ['image/jpeg', 'image/png', 'image/heic', 'application/pdf'];
-      if (!validTypes.includes(file.type)) {
-        toast({
-          title: 'Ungültiger Dateityp',
-          description: 'Bitte JPEG, PNG oder PDF hochladen',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      if (file.size > 10 * 1024 * 1024) {
-        toast({
-          title: 'Datei zu gross',
-          description: 'Maximale Dateigrösse ist 10 MB',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      setSelectedFile(file);
-    }
-  };
-
   const saveEntry = async () => {
     if (!user || !betrag) {
-      toast({
-        title: 'Fehler',
-        description: 'Bitte Betrag eingeben',
-        variant: 'destructive',
-      });
+      toast({ title: 'Fehler', description: 'Bitte Betrag eingeben', variant: 'destructive' });
       return;
     }
 
     const betragValue = parseFloat(betrag);
     if (isNaN(betragValue) || betragValue <= 0) {
-      toast({
-        title: 'Fehler',
-        description: 'Bitte gültigen Betrag eingeben',
-        variant: 'destructive',
-      });
+      toast({ title: 'Fehler', description: 'Bitte gültigen Betrag eingeben', variant: 'destructive' });
       return;
     }
 
-    setUploading(true);
+    setSaving(true);
 
-    try {
-      let belegUrl = null;
-      let belegFilename = null;
+    const { error } = await supabase.from('kasse_tageskarten').insert({
+      user_id: user.id,
+      datum: selectedDate,
+      betrag: betragValue,
+      beschreibung: beschreibung || null,
+    });
 
-      if (selectedFile) {
-        const fileExt = selectedFile.name.split('.').pop();
-        const fileName = `kasse/${user.id}/${Date.now()}.${fileExt}`;
+    setSaving(false);
 
-        const { error: uploadError } = await supabase.storage
-          .from('belege')
-          .upload(fileName, selectedFile);
-
-        if (uploadError) {
-          throw uploadError;
-        }
-
-        const { data: urlData } = supabase.storage.from('belege').getPublicUrl(fileName);
-        belegUrl = urlData.publicUrl;
-        belegFilename = selectedFile.name;
-      }
-
-      const { error: dbError } = await supabase.from('kasse_tageskarten').insert({
-        user_id: user.id,
-        datum: selectedDate,
-        betrag: betragValue,
-        beschreibung: beschreibung || null,
-        beleg_url: belegUrl,
-        beleg_filename: belegFilename,
-      });
-
-      if (dbError) {
-        throw dbError;
-      }
-
-      // Reset form
-      setSelectedFile(null);
-      setBeschreibung('');
-      setBetrag('');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      if (cameraInputRef.current) cameraInputRef.current.value = '';
-
-      fetchEntries();
-      toast({
-        title: 'Gespeichert',
-        description: 'Tageskarten-Einnahme erfasst',
-      });
-    } catch (error) {
-      console.error('Save error:', error);
-      toast({
-        title: 'Fehler',
-        description: 'Eintrag konnte nicht gespeichert werden',
-        variant: 'destructive',
-      });
-    } finally {
-      setUploading(false);
+    if (error) {
+      toast({ title: 'Fehler', description: 'Eintrag konnte nicht gespeichert werden', variant: 'destructive' });
+      return;
     }
+
+    setBeschreibung('');
+    setBetrag('');
+    fetchEntries();
+    toast({ title: 'Gespeichert', description: 'Tageskarten-Einnahme erfasst' });
   };
 
   const openEditDialog = (entry: KasseEntry) => {
@@ -189,15 +111,11 @@ export default function KasseTageskarten() {
 
     const betragValue = parseFloat(editBetrag);
     if (isNaN(betragValue) || betragValue <= 0) {
-      toast({
-        title: 'Fehler',
-        description: 'Bitte gültigen Betrag eingeben',
-        variant: 'destructive',
-      });
+      toast({ title: 'Fehler', description: 'Bitte gültigen Betrag eingeben', variant: 'destructive' });
       return;
     }
 
-    setUploading(true);
+    setSaving(true);
 
     const { error } = await supabase
       .from('kasse_tageskarten')
@@ -208,24 +126,17 @@ export default function KasseTageskarten() {
       })
       .eq('id', editingEntry.id);
 
-    setUploading(false);
+    setSaving(false);
 
     if (error) {
-      toast({
-        title: 'Fehler',
-        description: 'Eintrag konnte nicht aktualisiert werden',
-        variant: 'destructive',
-      });
+      toast({ title: 'Fehler', description: 'Eintrag konnte nicht aktualisiert werden', variant: 'destructive' });
       return;
     }
 
     setEditDialogOpen(false);
     setEditingEntry(null);
     fetchEntries();
-    toast({
-      title: 'Aktualisiert',
-      description: 'Eintrag wurde geändert',
-    });
+    toast({ title: 'Aktualisiert', description: 'Eintrag wurde geändert' });
   };
 
   return (
@@ -234,15 +145,13 @@ export default function KasseTageskarten() {
         {/* Total Card */}
         <Card className="bg-primary/5 border-primary/20">
           <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Banknote className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Letzte Einnahmen</p>
-                  <p className="text-xl font-semibold">Total: CHF {total.toFixed(2)}</p>
-                </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Banknote className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Letzte Einnahmen</p>
+                <p className="text-xl font-semibold">Total: CHF {total.toFixed(2)}</p>
               </div>
             </div>
           </CardContent>
@@ -259,108 +168,21 @@ export default function KasseTageskarten() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Datum</Label>
-              <Input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="input-alpine"
-              />
+              <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="input-alpine" />
             </div>
 
             <div className="space-y-2">
               <Label>Betrag (CHF)</Label>
-              <Input
-                type="number"
-                step="0.05"
-                min="0"
-                placeholder="0.00"
-                value={betrag}
-                onChange={(e) => setBetrag(e.target.value)}
-                className="input-alpine"
-              />
+              <Input type="number" step="0.05" min="0" placeholder="0.00" value={betrag} onChange={(e) => setBetrag(e.target.value)} className="input-alpine" />
             </div>
 
             <div className="space-y-2">
               <Label>Beschreibung (optional)</Label>
-              <Textarea
-                placeholder="z.B. Tageskarten, Abonnements..."
-                value={beschreibung}
-                onChange={(e) => setBeschreibung(e.target.value)}
-                className="input-alpine resize-none"
-                rows={2}
-              />
+              <Textarea placeholder="z.B. Tageskarten, Abonnements..." value={beschreibung} onChange={(e) => setBeschreibung(e.target.value)} className="input-alpine resize-none" rows={2} />
             </div>
 
-            <div className="space-y-2">
-              <Label>Beleg (optional)</Label>
-              <div className="flex gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1 gap-2"
-                  onClick={() => cameraInputRef.current?.click()}
-                >
-                  <Camera className="h-4 w-4" />
-                  Foto
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1 gap-2"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload className="h-4 w-4" />
-                  Datei
-                </Button>
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,application/pdf"
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-              <input
-                ref={cameraInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-            </div>
-
-            {selectedFile && (
-              <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm truncate flex-1">{selectedFile.name}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedFile(null);
-                    if (fileInputRef.current) fileInputRef.current.value = '';
-                    if (cameraInputRef.current) cameraInputRef.current.value = '';
-                  }}
-                >
-                  ✕
-                </Button>
-              </div>
-            )}
-
-            <Button
-              onClick={saveEntry}
-              disabled={uploading || !betrag}
-              className="w-full gap-2"
-            >
-              {uploading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Speichern...
-                </>
-              ) : (
-                'Beleg speichern'
-              )}
+            <Button onClick={saveEntry} disabled={saving || !betrag} className="w-full">
+              {saving ? 'Speichern...' : 'Betrag speichern'}
             </Button>
           </CardContent>
         </Card>
@@ -378,44 +200,17 @@ export default function KasseTageskarten() {
             ) : (
               <div className="space-y-3">
                 {entries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="flex items-center justify-between py-2 border-b border-border last:border-0"
-                  >
+                  <div key={entry.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">
-                        {entry.beschreibung || 'Tageskarten'}
-                      </p>
+                      <p className="font-medium text-sm truncate">{entry.beschreibung || 'Tageskarten'}</p>
                       <div className="flex gap-2 text-xs text-muted-foreground">
                         <span>{format(new Date(entry.datum), 'dd.MM.yyyy', { locale: de })}</span>
                         <span className="font-medium text-foreground">CHF {entry.betrag.toFixed(2)}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      {entry.beleg_url && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          asChild
-                        >
-                          <a
-                            href={entry.beleg_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            Ansehen
-                          </a>
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => openEditDialog(entry)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(entry)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -432,38 +227,18 @@ export default function KasseTageskarten() {
             <div className="space-y-4 pt-4">
               <div className="space-y-2">
                 <Label>Datum</Label>
-                <Input
-                  type="date"
-                  value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                  className="input-alpine"
-                />
+                <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="input-alpine" />
               </div>
-
               <div className="space-y-2">
                 <Label>Betrag (CHF)</Label>
-                <Input
-                  type="number"
-                  step="0.05"
-                  min="0"
-                  value={editBetrag}
-                  onChange={(e) => setEditBetrag(e.target.value)}
-                  className="input-alpine"
-                />
+                <Input type="number" step="0.05" min="0" value={editBetrag} onChange={(e) => setEditBetrag(e.target.value)} className="input-alpine" />
               </div>
-
               <div className="space-y-2">
                 <Label>Beschreibung</Label>
-                <Textarea
-                  value={editBeschreibung}
-                  onChange={(e) => setEditBeschreibung(e.target.value)}
-                  className="input-alpine resize-none"
-                  rows={2}
-                />
+                <Textarea value={editBeschreibung} onChange={(e) => setEditBeschreibung(e.target.value)} className="input-alpine resize-none" rows={2} />
               </div>
-
-              <Button onClick={saveEdit} disabled={uploading || !editBetrag} className="w-full">
-                {uploading ? 'Speichern...' : 'Änderungen speichern'}
+              <Button onClick={saveEdit} disabled={saving || !editBetrag} className="w-full">
+                {saving ? 'Speichern...' : 'Änderungen speichern'}
               </Button>
             </div>
           </DialogContent>

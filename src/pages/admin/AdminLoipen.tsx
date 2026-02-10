@@ -9,9 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Filter, MapPin, Check, X } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { Download, Filter, MapPin } from 'lucide-react';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 import { de } from 'date-fns/locale';
+import { getSeasonDates, getSeasonLabel, getAvailableSeasons } from '@/lib/seasonUtils';
 
 interface Profile {
   id: string;
@@ -20,46 +21,45 @@ interface Profile {
   nachname: string;
 }
 
+interface LoipeConfigDB {
+  id: string;
+  name: string;
+  has_skating: boolean;
+  has_klassisch: boolean;
+  has_skipiste: boolean;
+  sort_order: number;
+  column_key: string | null;
+}
+
 interface LoipenProtokoll {
   id: string;
   user_id: string;
   datum: string;
-  schwanden_nidfurn_skating: boolean;
-  schwanden_nidfurn_klassisch: boolean;
-  nidfurn_leuggelbach_skating: boolean;
-  nidfurn_leuggelbach_klassisch: boolean;
-  rundkurs_leuggelbach_skating: boolean;
-  rundkurs_leuggelbach_klassisch: boolean;
-  luchsingen_skistuebli_skating: boolean;
-  luchsingen_skistuebli_klassisch: boolean;
-  haetzingen_linthal_skating: boolean;
-  haetzingen_linthal_klassisch: boolean;
-  saeatli_boden_skating: boolean;
-  saeatli_boden_klassisch: boolean;
-  skilift_lo_skating: boolean;
-  skilift_lo_klassisch: boolean;
   profiles?: Profile;
+  [key: string]: unknown;
 }
-
-const LOIPEN_NAMES = [
-  { key: 'schwanden_nidfurn', name: 'Schwanden - Nidfurn' },
-  { key: 'nidfurn_leuggelbach', name: 'Nidfurn - Leuggelbach' },
-  { key: 'rundkurs_leuggelbach', name: 'Rundkurs Leuggelbach' },
-  { key: 'luchsingen_skistuebli', name: 'Luchsingen - Skistübli' },
-  { key: 'haetzingen_linthal', name: 'Hätzingen - Linthal' },
-  { key: 'saeatli_boden', name: 'Säätliboden' },
-  { key: 'skilift_lo', name: 'Skilift Lo' },
-];
 
 export default function AdminLoipen() {
   const { toast } = useToast();
   const [entries, setEntries] = useState<LoipenProtokoll[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [loipenConfig, setLoipenConfig] = useState<LoipeConfigDB[]>([]);
   const [loading, setLoading] = useState(true);
   
   const [startDate, setStartDate] = useState(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
   const [selectedUser, setSelectedUser] = useState<string>('all');
+  const [selectedSeason, setSelectedSeason] = useState('');
+
+  const availableSeasons = getAvailableSeasons();
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      const { data } = await supabase.from('loipen_config').select('*').order('sort_order');
+      if (data) setLoipenConfig(data as LoipeConfigDB[]);
+    };
+    fetchConfig();
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -102,20 +102,55 @@ export default function AdminLoipen() {
   const setWeekPeriod = () => {
     setStartDate(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
     setEndDate(format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+    setSelectedSeason('');
   };
 
   const setMonthPeriod = () => {
     setStartDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
     setEndDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+    setSelectedSeason('');
+  };
+
+  const setYearPeriod = () => {
+    setStartDate(format(startOfYear(new Date()), 'yyyy-MM-dd'));
+    setEndDate(format(endOfYear(new Date()), 'yyyy-MM-dd'));
+    setSelectedSeason('');
+  };
+
+  const setSeasonPeriod = (seasonLabel: string) => {
+    setSelectedSeason(seasonLabel);
+    const { start, end } = getSeasonDates(seasonLabel);
+    setStartDate(start);
+    setEndDate(end);
+  };
+
+  const getLoipenForEntry = (entry: LoipenProtokoll) => {
+    const result: { name: string; type: string }[] = [];
+    loipenConfig.forEach(loipe => {
+      if (!loipe.column_key) return;
+      const skating = entry[`${loipe.column_key}_skating`] as boolean;
+      const klassisch = entry[`${loipe.column_key}_klassisch`] as boolean;
+      if (!skating && !klassisch) return;
+
+      if (loipe.has_skipiste) {
+        if (skating || klassisch) {
+          result.push({ name: loipe.name, type: 'Skipiste' });
+        }
+      } else {
+        if (skating && klassisch) {
+          result.push({ name: loipe.name, type: 'Skating, Klassisch' });
+        } else if (skating) {
+          result.push({ name: loipe.name, type: 'Skating' });
+        } else if (klassisch) {
+          result.push({ name: loipe.name, type: 'Klassisch' });
+        }
+      }
+    });
+    return result;
   };
 
   const countLoipen = (entry: LoipenProtokoll): number => {
-    let count = 0;
-    LOIPEN_NAMES.forEach(loipe => {
-      if ((entry as any)[`${loipe.key}_skating`]) count++;
-      if ((entry as any)[`${loipe.key}_klassisch`]) count++;
-    });
-    return count;
+    return getLoipenForEntry(entry).length;
   };
 
   const exportCSV = () => {
@@ -124,14 +159,20 @@ export default function AdminLoipen() {
       return;
     }
 
-    const headers = ['Datum', 'Mitarbeiter', ...LOIPEN_NAMES.flatMap(l => [`${l.name} Skating`, `${l.name} Klassisch`])];
+    const loipenWithKeys = loipenConfig.filter(l => l.column_key);
+    const headers = ['Datum', 'Mitarbeiter', 'Präpariert', ...loipenWithKeys.map(l => l.name)];
     const rows = entries.map((entry) => {
       const name = entry.profiles ? `${entry.profiles.vorname} ${entry.profiles.nachname}` : 'Unbekannt';
-      const loipenValues = LOIPEN_NAMES.flatMap(loipe => [
-        (entry as any)[`${loipe.key}_skating`] ? 'Ja' : 'Nein',
-        (entry as any)[`${loipe.key}_klassisch`] ? 'Ja' : 'Nein',
-      ]);
-      return [format(new Date(entry.datum), 'dd.MM.yyyy'), name, ...loipenValues];
+      const loipenValues = loipenWithKeys.map(loipe => {
+        const skating = entry[`${loipe.column_key}_skating`] as boolean;
+        const klassisch = entry[`${loipe.column_key}_klassisch`] as boolean;
+        if (loipe.has_skipiste) return (skating || klassisch) ? 'Skipiste' : '';
+        const parts = [];
+        if (skating) parts.push('Skating');
+        if (klassisch) parts.push('Klassisch');
+        return parts.join(', ');
+      });
+      return [format(new Date(entry.datum), 'dd.MM.yyyy'), name, countLoipen(entry).toString(), ...loipenValues];
     });
 
     const csvContent = [headers.join(';'), ...rows.map((row) => row.join(';'))].join('\n');
@@ -148,6 +189,8 @@ export default function AdminLoipen() {
     toast({ title: 'Export erfolgreich', description: 'CSV-Datei wurde heruntergeladen' });
   };
 
+  const loipenWithKeys = loipenConfig.filter(l => l.column_key);
+
   return (
     <AdminLayout title="Loipen-Protokoll">
       <div className="space-y-6">
@@ -155,14 +198,24 @@ export default function AdminLoipen() {
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="text-base flex items-center gap-2">
-              <Filter className="h-4 w-4" />
-              Filter
+              <Filter className="h-4 w-4" /> Filter
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button variant="outline" size="sm" onClick={setWeekPeriod}>Diese Woche</Button>
               <Button variant="outline" size="sm" onClick={setMonthPeriod}>Dieser Monat</Button>
+              <Button variant="outline" size="sm" onClick={setYearPeriod}>Dieses Jahr</Button>
+              <Select value={selectedSeason} onValueChange={setSeasonPeriod}>
+                <SelectTrigger className="w-[160px] h-9">
+                  <SelectValue placeholder="Saison" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSeasons.map((s: string) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -197,12 +250,11 @@ export default function AdminLoipen() {
             <span className="font-medium">{entries.length} Protokolle</span>
           </div>
           <Button onClick={exportCSV} variant="outline" className="gap-2">
-            <Download className="h-4 w-4" />
-            CSV Export
+            <Download className="h-4 w-4" /> CSV Export
           </Button>
         </div>
 
-        {/* Table */}
+        {/* Table with track names in header */}
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -212,17 +264,21 @@ export default function AdminLoipen() {
                     <TableHead>Datum</TableHead>
                     <TableHead>Mitarbeiter</TableHead>
                     <TableHead>Präpariert</TableHead>
-                    <TableHead>Loipen</TableHead>
+                    {loipenWithKeys.map(loipe => (
+                      <TableHead key={loipe.id} className="text-center min-w-[100px]">
+                        {loipe.name}
+                      </TableHead>
+                    ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">Laden...</TableCell>
+                      <TableCell colSpan={3 + loipenWithKeys.length} className="text-center py-8 text-muted-foreground">Laden...</TableCell>
                     </TableRow>
                   ) : entries.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">Keine Einträge gefunden</TableCell>
+                      <TableCell colSpan={3 + loipenWithKeys.length} className="text-center py-8 text-muted-foreground">Keine Einträge gefunden</TableCell>
                     </TableRow>
                   ) : (
                     entries.map((entry) => (
@@ -234,22 +290,36 @@ export default function AdminLoipen() {
                         <TableCell>
                           <Badge variant="secondary">{countLoipen(entry)}</Badge>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {LOIPEN_NAMES.map(loipe => {
-                              const skating = (entry as any)[`${loipe.key}_skating`];
-                              const klassisch = (entry as any)[`${loipe.key}_klassisch`];
-                              if (!skating && !klassisch) return null;
-                              return (
-                                <Badge key={loipe.key} variant="outline" className="text-xs">
-                                  {loipe.name}
-                                  {skating && ' S'}
-                                  {klassisch && ' K'}
-                                </Badge>
-                              );
-                            })}
-                          </div>
-                        </TableCell>
+                        {loipenWithKeys.map(loipe => {
+                          const skating = entry[`${loipe.column_key}_skating`] as boolean;
+                          const klassisch = entry[`${loipe.column_key}_klassisch`] as boolean;
+                          
+                          if (loipe.has_skipiste) {
+                            return (
+                              <TableCell key={loipe.id} className="text-center">
+                                {(skating || klassisch) ? (
+                                  <Badge variant="outline" className="text-xs">Skipiste</Badge>
+                                ) : '-'}
+                              </TableCell>
+                            );
+                          }
+                          
+                          const parts = [];
+                          if (skating) parts.push('Skating');
+                          if (klassisch) parts.push('Klassisch');
+                          
+                          return (
+                            <TableCell key={loipe.id} className="text-center">
+                              {parts.length > 0 ? (
+                                <div className="flex flex-col gap-1 items-center">
+                                  {parts.map(p => (
+                                    <Badge key={p} variant="outline" className="text-xs">{p}</Badge>
+                                  ))}
+                                </div>
+                              ) : '-'}
+                            </TableCell>
+                          );
+                        })}
                       </TableRow>
                     ))
                   )}

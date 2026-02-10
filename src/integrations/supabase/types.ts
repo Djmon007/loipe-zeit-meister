@@ -120,6 +120,7 @@ export type Database = {
       }
       loipen_config: {
         Row: {
+          column_key: string | null
           created_at: string
           has_klassisch: boolean
           has_skating: boolean
@@ -130,6 +131,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          column_key?: string | null
           created_at?: string
           has_klassisch?: boolean
           has_skating?: boolean
@@ -140,6 +142,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          column_key?: string | null
           created_at?: string
           has_klassisch?: boolean
           has_skating?: boolean
@@ -275,7 +278,7 @@ export type Database = {
       }
       time_entries: {
         Row: {
-          arbeit: Database["public"]["Enums"]["work_type"]
+          arbeit: string
           created_at: string
           datum: string
           id: string
@@ -286,7 +289,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          arbeit: Database["public"]["Enums"]["work_type"]
+          arbeit: string
           created_at?: string
           datum?: string
           id?: string
@@ -297,7 +300,7 @@ export type Database = {
           user_id: string
         }
         Update: {
-          arbeit?: Database["public"]["Enums"]["work_type"]
+          arbeit?: string
           created_at?: string
           datum?: string
           id?: string
@@ -343,7 +346,6 @@ export type Database = {
     Enums: {
       app_role: "admin" | "worker"
       diesel_tank: "Tank Nidfurn" | "Tank Hätzingen"
-      work_type: "Loipenpräparation" | "Aufbau" | "Abbau" | "Verschiedenes"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -473,7 +475,6 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "worker"],
       diesel_tank: ["Tank Nidfurn", "Tank Hätzingen"],
-      work_type: ["Loipenpräparation", "Aufbau", "Abbau", "Verschiedenes"],
     },
   },
 } as const

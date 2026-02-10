@@ -12,59 +12,15 @@ import { MapPin, Save, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 
-interface LoipeConfig {
-  key: string;
+interface LoipeConfigDB {
+  id: string;
   name: string;
-  skatingKey: string;
-  klassischKey: string;
-  hasSkipiste?: boolean;
+  has_skating: boolean;
+  has_klassisch: boolean;
+  has_skipiste: boolean;
+  sort_order: number;
+  column_key: string | null;
 }
-
-const LOIPEN: LoipeConfig[] = [
-  {
-    key: 'schwanden_nidfurn',
-    name: 'Schwanden - Nidfurn',
-    skatingKey: 'schwanden_nidfurn_skating',
-    klassischKey: 'schwanden_nidfurn_klassisch',
-  },
-  {
-    key: 'nidfurn_leuggelbach',
-    name: 'Nidfurn - Leuggelbach',
-    skatingKey: 'nidfurn_leuggelbach_skating',
-    klassischKey: 'nidfurn_leuggelbach_klassisch',
-  },
-  {
-    key: 'rundkurs_leuggelbach',
-    name: 'Rundkurs Leuggelbach',
-    skatingKey: 'rundkurs_leuggelbach_skating',
-    klassischKey: 'rundkurs_leuggelbach_klassisch',
-  },
-  {
-    key: 'luchsingen_skistuebli',
-    name: 'Luchsingen - Skistübli',
-    skatingKey: 'luchsingen_skistuebli_skating',
-    klassischKey: 'luchsingen_skistuebli_klassisch',
-  },
-  {
-    key: 'haetzingen_linthal',
-    name: 'Hätzingen - Linthal',
-    skatingKey: 'haetzingen_linthal_skating',
-    klassischKey: 'haetzingen_linthal_klassisch',
-  },
-  {
-    key: 'saeatli_boden',
-    name: 'Säätliboden (Rüti GL)',
-    skatingKey: 'saeatli_boden_skating',
-    klassischKey: 'saeatli_boden_klassisch',
-  },
-  {
-    key: 'skilift_lo',
-    name: 'Skilift Loh',
-    skatingKey: 'skilift_lo_skating',
-    klassischKey: 'skilift_lo_klassisch',
-    hasSkipiste: true,
-  },
-];
 
 type LoipenState = Record<string, boolean>;
 
@@ -76,9 +32,25 @@ export default function Loipen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [existingId, setExistingId] = useState<string | null>(null);
+  const [loipenConfig, setLoipenConfig] = useState<LoipeConfigDB[]>([]);
+
+  // Fetch loipen config from DB
+  useEffect(() => {
+    const fetchConfig = async () => {
+      const { data } = await supabase
+        .from('loipen_config')
+        .select('*')
+        .order('sort_order');
+      
+      if (data) {
+        setLoipenConfig(data as LoipeConfigDB[]);
+      }
+    };
+    fetchConfig();
+  }, []);
 
   const fetchLoipenData = useCallback(async () => {
-    if (!user) return;
+    if (!user || loipenConfig.length === 0) return;
 
     setLoading(true);
     const { data, error } = await supabase
@@ -95,50 +67,56 @@ export default function Loipen() {
     if (data) {
       setExistingId(data.id);
       const state: LoipenState = {};
-      LOIPEN.forEach((loipe) => {
-        state[loipe.skatingKey] = (data as Record<string, unknown>)[loipe.skatingKey] as boolean || false;
-        state[loipe.klassischKey] = (data as Record<string, unknown>)[loipe.klassischKey] as boolean || false;
+      loipenConfig.forEach((loipe) => {
+        if (loipe.column_key) {
+          state[`${loipe.column_key}_skating`] = (data as Record<string, unknown>)[`${loipe.column_key}_skating`] as boolean || false;
+          state[`${loipe.column_key}_klassisch`] = (data as Record<string, unknown>)[`${loipe.column_key}_klassisch`] as boolean || false;
+        }
       });
       setLoipenState(state);
     } else {
       setExistingId(null);
       const initialState: LoipenState = {};
-      LOIPEN.forEach((loipe) => {
-        initialState[loipe.skatingKey] = false;
-        initialState[loipe.klassischKey] = false;
+      loipenConfig.forEach((loipe) => {
+        if (loipe.column_key) {
+          initialState[`${loipe.column_key}_skating`] = false;
+          initialState[`${loipe.column_key}_klassisch`] = false;
+        }
       });
       setLoipenState(initialState);
     }
     setLoading(false);
-  }, [user, selectedDate]);
+  }, [user, selectedDate, loipenConfig]);
 
   useEffect(() => {
     fetchLoipenData();
   }, [fetchLoipenData]);
 
   const toggleLoipe = (key: string) => {
+    setLoipenState((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleBoth = (loipe: LoipeConfigDB) => {
+    if (!loipe.column_key) return;
+    const skKey = `${loipe.column_key}_skating`;
+    const klKey = `${loipe.column_key}_klassisch`;
+    const bothSelected = loipenState[skKey] && loipenState[klKey];
     setLoipenState((prev) => ({
       ...prev,
-      [key]: !prev[key],
+      [skKey]: !bothSelected,
+      [klKey]: !bothSelected,
     }));
   };
 
-  const toggleBoth = (loipe: LoipeConfig) => {
-    const bothSelected = loipenState[loipe.skatingKey] && loipenState[loipe.klassischKey];
+  const toggleSkipiste = (loipe: LoipeConfigDB) => {
+    if (!loipe.column_key) return;
+    const skKey = `${loipe.column_key}_skating`;
+    const klKey = `${loipe.column_key}_klassisch`;
+    const isSelected = loipenState[skKey] || loipenState[klKey];
     setLoipenState((prev) => ({
       ...prev,
-      [loipe.skatingKey]: !bothSelected,
-      [loipe.klassischKey]: !bothSelected,
-    }));
-  };
-
-  const toggleSkipiste = (loipe: LoipeConfig) => {
-    // For Skilift Loh, toggle both skating and klassisch together as "Skipiste"
-    const isSelected = loipenState[loipe.skatingKey] || loipenState[loipe.klassischKey];
-    setLoipenState((prev) => ({
-      ...prev,
-      [loipe.skatingKey]: !isSelected,
-      [loipe.klassischKey]: !isSelected,
+      [skKey]: !isSelected,
+      [klKey]: !isSelected,
     }));
   };
 
@@ -147,11 +125,18 @@ export default function Loipen() {
 
     setSaving(true);
 
-    const payload = {
+    // Only include columns that exist in the DB
+    const payload: Record<string, unknown> = {
       user_id: user.id,
       datum: selectedDate,
-      ...loipenState,
     };
+    
+    loipenConfig.forEach((loipe) => {
+      if (loipe.column_key) {
+        payload[`${loipe.column_key}_skating`] = loipenState[`${loipe.column_key}_skating`] || false;
+        payload[`${loipe.column_key}_klassisch`] = loipenState[`${loipe.column_key}_klassisch`] || false;
+      }
+    });
 
     let error;
 
@@ -162,38 +147,30 @@ export default function Loipen() {
         .eq('id', existingId);
       error = result.error;
     } else {
-      const result = await supabase.from('loipen_protokoll').insert(payload);
+      const result = await supabase.from('loipen_protokoll').insert(payload as any);
       error = result.error;
     }
 
     setSaving(false);
 
     if (error) {
-      toast({
-        title: 'Fehler',
-        description: 'Protokoll konnte nicht gespeichert werden',
-        variant: 'destructive',
-      });
+      toast({ title: 'Fehler', description: 'Protokoll konnte nicht gespeichert werden', variant: 'destructive' });
       return;
     }
 
-    toast({
-      title: 'Gespeichert',
-      description: 'Loipen-Protokoll wurde aktualisiert',
-    });
+    toast({ title: 'Gespeichert', description: 'Loipen-Protokoll wurde aktualisiert' });
     fetchLoipenData();
   };
 
   const countSelected = () => {
     let count = 0;
-    LOIPEN.forEach((loipe) => {
-      if (loipe.hasSkipiste) {
-        if (loipenState[loipe.skatingKey] || loipenState[loipe.klassischKey]) {
-          count++;
-        }
+    loipenConfig.forEach((loipe) => {
+      if (!loipe.column_key) return;
+      if (loipe.has_skipiste) {
+        if (loipenState[`${loipe.column_key}_skating`] || loipenState[`${loipe.column_key}_klassisch`]) count++;
       } else {
-        if (loipenState[loipe.skatingKey]) count++;
-        if (loipenState[loipe.klassischKey]) count++;
+        if (loipenState[`${loipe.column_key}_skating`]) count++;
+        if (loipenState[`${loipe.column_key}_klassisch`]) count++;
       }
     });
     return count;
@@ -209,22 +186,12 @@ export default function Loipen() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-4">
               <div className="flex-1">
-                <Label htmlFor="date" className="text-sm text-muted-foreground">
-                  Datum
-                </Label>
-                <Input
-                  id="date"
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="input-alpine mt-1"
-                />
+                <Label htmlFor="date" className="text-sm text-muted-foreground">Datum</Label>
+                <Input id="date" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="input-alpine mt-1" />
               </div>
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Heute</p>
-                <p className="font-medium">
-                  {format(new Date(), 'EEEE', { locale: de })}
-                </p>
+                <p className="font-medium">{format(new Date(), 'EEEE', { locale: de })}</p>
               </div>
             </div>
           </CardContent>
@@ -243,75 +210,56 @@ export default function Loipen() {
               <p className="text-muted-foreground text-sm">Laden...</p>
             ) : (
               <div className="space-y-4">
-                {LOIPEN.map((loipe) => (
-                  <div
-                    key={loipe.key}
-                    className="loipe-card p-4 rounded-lg border border-border bg-card"
-                  >
+                {loipenConfig.filter(l => l.column_key).map((loipe) => (
+                  <div key={loipe.id} className="loipe-card p-4 rounded-lg border border-border bg-card">
                     <p className="font-medium mb-3">{loipe.name}</p>
-                    {loipe.hasSkipiste ? (
-                      // Skilift Loh - only Skipiste checkbox
+                    {loipe.has_skipiste ? (
                       <div className="flex gap-6">
                         <div className="flex items-center gap-2">
                           <Checkbox
-                            id={`${loipe.key}_skipiste`}
-                            checked={loipenState[loipe.skatingKey] || loipenState[loipe.klassischKey] || false}
+                            id={`${loipe.column_key}_skipiste`}
+                            checked={loipenState[`${loipe.column_key}_skating`] || loipenState[`${loipe.column_key}_klassisch`] || false}
                             onCheckedChange={() => toggleSkipiste(loipe)}
                             className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                           />
-                          <Label
-                            htmlFor={`${loipe.key}_skipiste`}
-                            className="text-sm cursor-pointer"
-                          >
-                            Skipiste
-                          </Label>
+                          <Label htmlFor={`${loipe.column_key}_skipiste`} className="text-sm cursor-pointer">Skipiste</Label>
                         </div>
                       </div>
                     ) : (
-                      // Regular loipen - Skating, Klassisch, and Beides
                       <div className="flex gap-4 flex-wrap">
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id={loipe.skatingKey}
-                            checked={loipenState[loipe.skatingKey] || false}
-                            onCheckedChange={() => toggleLoipe(loipe.skatingKey)}
-                            className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                          />
-                          <Label
-                            htmlFor={loipe.skatingKey}
-                            className="text-sm cursor-pointer"
-                          >
-                            Skating
-                          </Label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id={loipe.klassischKey}
-                            checked={loipenState[loipe.klassischKey] || false}
-                            onCheckedChange={() => toggleLoipe(loipe.klassischKey)}
-                            className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                          />
-                          <Label
-                            htmlFor={loipe.klassischKey}
-                            className="text-sm cursor-pointer"
-                          >
-                            Klassisch
-                          </Label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id={`${loipe.key}_beides`}
-                            checked={loipenState[loipe.skatingKey] && loipenState[loipe.klassischKey]}
-                            onCheckedChange={() => toggleBoth(loipe)}
-                            className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                          />
-                          <Label
-                            htmlFor={`${loipe.key}_beides`}
-                            className="text-sm cursor-pointer"
-                          >
-                            Beides
-                          </Label>
-                        </div>
+                        {loipe.has_skating && (
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id={`${loipe.column_key}_skating`}
+                              checked={loipenState[`${loipe.column_key}_skating`] || false}
+                              onCheckedChange={() => toggleLoipe(`${loipe.column_key}_skating`)}
+                              className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                            />
+                            <Label htmlFor={`${loipe.column_key}_skating`} className="text-sm cursor-pointer">Skating</Label>
+                          </div>
+                        )}
+                        {loipe.has_klassisch && (
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id={`${loipe.column_key}_klassisch`}
+                              checked={loipenState[`${loipe.column_key}_klassisch`] || false}
+                              onCheckedChange={() => toggleLoipe(`${loipe.column_key}_klassisch`)}
+                              className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                            />
+                            <Label htmlFor={`${loipe.column_key}_klassisch`} className="text-sm cursor-pointer">Klassisch</Label>
+                          </div>
+                        )}
+                        {loipe.has_skating && loipe.has_klassisch && (
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id={`${loipe.column_key}_beides`}
+                              checked={loipenState[`${loipe.column_key}_skating`] && loipenState[`${loipe.column_key}_klassisch`]}
+                              onCheckedChange={() => toggleBoth(loipe)}
+                              className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                            />
+                            <Label htmlFor={`${loipe.column_key}_beides`} className="text-sm cursor-pointer">Beides</Label>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -322,18 +270,9 @@ export default function Loipen() {
         </Card>
 
         {/* Save Button */}
-        <Button
-          onClick={saveLoipen}
-          disabled={saving || loading}
-          className="w-full gap-2"
-        >
-          {saving ? (
-            'Speichern...'
-          ) : (
-            <>
-              <Save className="h-4 w-4" />
-              Protokoll speichern
-            </>
+        <Button onClick={saveLoipen} disabled={saving || loading} className="w-full gap-2">
+          {saving ? 'Speichern...' : (
+            <><Save className="h-4 w-4" /> Protokoll speichern</>
           )}
         </Button>
 
@@ -343,9 +282,7 @@ export default function Loipen() {
             <CardContent className="pt-4">
               <div className="flex items-center gap-2 text-success">
                 <Check className="h-5 w-5" />
-                <p className="font-medium">
-                  {countSelected()} Loipen markiert
-                </p>
+                <p className="font-medium">{countSelected()} Loipen markiert</p>
               </div>
             </CardContent>
           </Card>
