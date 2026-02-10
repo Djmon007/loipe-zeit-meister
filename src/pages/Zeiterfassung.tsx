@@ -9,18 +9,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Play, Square, Plus, Clock, Calendar, Pause, PlayCircle } from 'lucide-react';
+import { Play, Square, Plus, Clock, Calendar, Pause, PlayCircle, Pencil } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { de } from 'date-fns/locale';
-
-type WorkType = 'Loipenpräparation' | 'Aufbau' | 'Abbau' | 'Verschiedenes';
-
-const WORK_TYPES: WorkType[] = ['Loipenpräparation', 'Aufbau', 'Abbau', 'Verschiedenes'];
 
 interface TimeEntry {
   id: string;
   datum: string;
-  arbeit: WorkType;
+  arbeit: string;
   start_zeit: string | null;
   stopp_zeit: string | null;
   total_stunden: number | null;
@@ -33,19 +29,48 @@ export default function Zeiterfassung() {
   const [loading, setLoading] = useState(true);
   const [activeTimer, setActiveTimer] = useState<TimeEntry | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [selectedProject, setSelectedProject] = useState<WorkType>('Loipenpräparation');
+  const [selectedProject, setSelectedProject] = useState('');
   const [weeklyHours, setWeeklyHours] = useState(0);
   const [monthlyHours, setMonthlyHours] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const pausedTimeRef = useRef(0);
   const pauseStartRef = useRef<Date | null>(null);
 
+  // Dynamic work types from tasks table
+  const [workTypes, setWorkTypes] = useState<string[]>([]);
+
   // Manual entry dialog state
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [manualDate, setManualDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [manualProject, setManualProject] = useState<WorkType>('Loipenpräparation');
+  const [manualProject, setManualProject] = useState('');
   const [manualStart, setManualStart] = useState('');
   const [manualEnd, setManualEnd] = useState('');
+
+  // Edit dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editProject, setEditProject] = useState('');
+  const [editStart, setEditStart] = useState('');
+  const [editEnd, setEditEnd] = useState('');
+
+  // Fetch dynamic tasks
+  useEffect(() => {
+    const fetchTasks = async () => {
+      const { data } = await supabase
+        .from('tasks')
+        .select('name')
+        .order('name');
+      
+      if (data && data.length > 0) {
+        const names = data.map(t => t.name);
+        setWorkTypes(names);
+        if (!selectedProject) setSelectedProject(names[0]);
+        if (!manualProject) setManualProject(names[0]);
+      }
+    };
+    fetchTasks();
+  }, []);
 
   const fetchEntries = useCallback(async () => {
     if (!user) return;
@@ -63,14 +88,10 @@ export default function Zeiterfassung() {
       return;
     }
 
-    const typedData = (data || []).map(entry => ({
-      ...entry,
-      arbeit: entry.arbeit as WorkType
-    }));
-
+    const typedData = (data || []) as TimeEntry[];
     setEntries(typedData);
 
-    // Find active timer (entry with start but no stop)
+    // Find active timer
     const active = typedData.find(
       (e) => e.start_zeit && !e.stopp_zeit && e.datum === format(new Date(), 'yyyy-MM-dd')
     );
@@ -83,25 +104,15 @@ export default function Zeiterfassung() {
     const monthStart = startOfMonth(now);
     const monthEnd = endOfMonth(now);
 
-    const { data: weekData } = await supabase
-      .from('time_entries')
-      .select('total_stunden')
-      .eq('user_id', user.id)
-      .gte('datum', format(weekStart, 'yyyy-MM-dd'))
-      .lte('datum', format(weekEnd, 'yyyy-MM-dd'));
+    const [{ data: weekData }, { data: monthData }] = await Promise.all([
+      supabase.from('time_entries').select('total_stunden').eq('user_id', user.id)
+        .gte('datum', format(weekStart, 'yyyy-MM-dd')).lte('datum', format(weekEnd, 'yyyy-MM-dd')),
+      supabase.from('time_entries').select('total_stunden').eq('user_id', user.id)
+        .gte('datum', format(monthStart, 'yyyy-MM-dd')).lte('datum', format(monthEnd, 'yyyy-MM-dd')),
+    ]);
 
-    const { data: monthData } = await supabase
-      .from('time_entries')
-      .select('total_stunden')
-      .eq('user_id', user.id)
-      .gte('datum', format(monthStart, 'yyyy-MM-dd'))
-      .lte('datum', format(monthEnd, 'yyyy-MM-dd'));
-
-    const weekTotal = (weekData || []).reduce((sum, e) => sum + (e.total_stunden || 0), 0);
-    const monthTotal = (monthData || []).reduce((sum, e) => sum + (e.total_stunden || 0), 0);
-
-    setWeeklyHours(weekTotal);
-    setMonthlyHours(monthTotal);
+    setWeeklyHours((weekData || []).reduce((sum, e) => sum + (e.total_stunden || 0), 0));
+    setMonthlyHours((monthData || []).reduce((sum, e) => sum + (e.total_stunden || 0), 0));
     setLoading(false);
   }, [user]);
 
@@ -125,7 +136,7 @@ export default function Zeiterfassung() {
   }, [activeTimer, isPaused]);
 
   const startTimer = async () => {
-    if (!user) return;
+    if (!user || !selectedProject) return;
 
     const now = new Date();
     const { data, error } = await supabase
@@ -140,35 +151,22 @@ export default function Zeiterfassung() {
       .single();
 
     if (error) {
-      toast({
-        title: 'Fehler',
-        description: 'Timer konnte nicht gestartet werden',
-        variant: 'destructive',
-      });
+      toast({ title: 'Fehler', description: 'Timer konnte nicht gestartet werden', variant: 'destructive' });
       return;
     }
 
-    setActiveTimer({
-      ...data,
-      arbeit: data.arbeit as WorkType
-    });
+    setActiveTimer(data as TimeEntry);
     setElapsedTime(0);
     pausedTimeRef.current = 0;
     setIsPaused(false);
-    toast({
-      title: 'Timer gestartet',
-      description: `${selectedProject} läuft`,
-    });
+    toast({ title: 'Timer gestartet', description: `${selectedProject} läuft` });
   };
 
   const pauseTimer = () => {
     if (!isPaused) {
       pauseStartRef.current = new Date();
       setIsPaused(true);
-      toast({
-        title: 'Pause',
-        description: 'Timer pausiert',
-      });
+      toast({ title: 'Pause', description: 'Timer pausiert' });
     }
   };
 
@@ -178,10 +176,7 @@ export default function Zeiterfassung() {
       pausedTimeRef.current += pauseDuration;
       pauseStartRef.current = null;
       setIsPaused(false);
-      toast({
-        title: 'Weiter',
-        description: 'Timer läuft wieder',
-      });
+      toast({ title: 'Weiter', description: 'Timer läuft wieder' });
     }
   };
 
@@ -191,13 +186,11 @@ export default function Zeiterfassung() {
     const now = new Date();
     const startTime = new Date(`${activeTimer.datum}T${activeTimer.start_zeit}`);
     
-    // Subtract paused time from total
     let totalSeconds = (now.getTime() - startTime.getTime()) / 1000;
     if (isPaused && pauseStartRef.current) {
       totalSeconds -= (now.getTime() - pauseStartRef.current.getTime()) / 1000;
     }
     totalSeconds -= pausedTimeRef.current;
-    
     const totalHours = totalSeconds / 3600;
 
     const { error } = await supabase
@@ -209,11 +202,7 @@ export default function Zeiterfassung() {
       .eq('id', activeTimer.id);
 
     if (error) {
-      toast({
-        title: 'Fehler',
-        description: 'Timer konnte nicht gestoppt werden',
-        variant: 'destructive',
-      });
+      toast({ title: 'Fehler', description: 'Timer konnte nicht gestoppt werden', variant: 'destructive' });
       return;
     }
 
@@ -222,25 +211,18 @@ export default function Zeiterfassung() {
     pausedTimeRef.current = 0;
     setIsPaused(false);
     fetchEntries();
-    toast({
-      title: 'Timer gestoppt',
-      description: `${formatDuration(elapsedTime)} erfasst`,
-    });
+    toast({ title: 'Timer gestoppt', description: `${formatDuration(elapsedTime)} erfasst` });
   };
 
   const addManualEntry = async () => {
-    if (!user || !manualStart || !manualEnd) return;
+    if (!user || !manualStart || !manualEnd || !manualProject) return;
 
     const start = new Date(`${manualDate}T${manualStart}`);
     const end = new Date(`${manualDate}T${manualEnd}`);
     const totalHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
     if (totalHours <= 0) {
-      toast({
-        title: 'Fehler',
-        description: 'Endzeit muss nach Startzeit sein',
-        variant: 'destructive',
-      });
+      toast({ title: 'Fehler', description: 'Endzeit muss nach Startzeit sein', variant: 'destructive' });
       return;
     }
 
@@ -254,11 +236,7 @@ export default function Zeiterfassung() {
     });
 
     if (error) {
-      toast({
-        title: 'Fehler',
-        description: 'Eintrag konnte nicht gespeichert werden',
-        variant: 'destructive',
-      });
+      toast({ title: 'Fehler', description: 'Eintrag konnte nicht gespeichert werden', variant: 'destructive' });
       return;
     }
 
@@ -266,10 +244,50 @@ export default function Zeiterfassung() {
     setManualStart('');
     setManualEnd('');
     fetchEntries();
-    toast({
-      title: 'Eintrag gespeichert',
-      description: `${Math.round(totalHours * 100) / 100} Stunden erfasst`,
-    });
+    toast({ title: 'Eintrag gespeichert', description: `${Math.round(totalHours * 100) / 100} Stunden erfasst` });
+  };
+
+  const openEditDialog = (entry: TimeEntry) => {
+    setEditingEntry(entry);
+    setEditDate(entry.datum);
+    setEditProject(entry.arbeit);
+    setEditStart(entry.start_zeit?.substring(0, 5) || '');
+    setEditEnd(entry.stopp_zeit?.substring(0, 5) || '');
+    setEditDialogOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editingEntry || !editStart || !editEnd) return;
+
+    const start = new Date(`${editDate}T${editStart}`);
+    const end = new Date(`${editDate}T${editEnd}`);
+    const totalHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+
+    if (totalHours <= 0) {
+      toast({ title: 'Fehler', description: 'Endzeit muss nach Startzeit sein', variant: 'destructive' });
+      return;
+    }
+
+    const { error } = await supabase
+      .from('time_entries')
+      .update({
+        datum: editDate,
+        arbeit: editProject,
+        start_zeit: editStart + ':00',
+        stopp_zeit: editEnd + ':00',
+        total_stunden: Math.round(totalHours * 100) / 100,
+      })
+      .eq('id', editingEntry.id);
+
+    if (error) {
+      toast({ title: 'Fehler', description: 'Eintrag konnte nicht aktualisiert werden', variant: 'destructive' });
+      return;
+    }
+
+    setEditDialogOpen(false);
+    setEditingEntry(null);
+    fetchEntries();
+    toast({ title: 'Aktualisiert', description: 'Zeiteintrag wurde geändert' });
   };
 
   const formatDuration = (seconds: number): string => {
@@ -326,13 +344,13 @@ export default function Zeiterfassung() {
             {!activeTimer && (
               <Select
                 value={selectedProject}
-                onValueChange={(v) => setSelectedProject(v as WorkType)}
+                onValueChange={setSelectedProject}
               >
                 <SelectTrigger className="input-alpine">
                   <SelectValue placeholder="Projekt wählen" />
                 </SelectTrigger>
                 <SelectContent>
-                  {WORK_TYPES.map((type) => (
+                  {workTypes.map((type) => (
                     <SelectItem key={type} value={type}>
                       {type}
                     </SelectItem>
@@ -355,7 +373,7 @@ export default function Zeiterfassung() {
 
             <div className="flex gap-3">
               {!activeTimer ? (
-                <Button onClick={startTimer} className="flex-1 gap-2">
+                <Button onClick={startTimer} className="flex-1 gap-2" disabled={!selectedProject}>
                   <Play className="h-4 w-4" />
                   Starten
                 </Button>
@@ -393,27 +411,15 @@ export default function Zeiterfassung() {
                   <div className="space-y-4 pt-4">
                     <div className="space-y-2">
                       <Label>Datum</Label>
-                      <Input
-                        type="date"
-                        value={manualDate}
-                        onChange={(e) => setManualDate(e.target.value)}
-                        className="input-alpine"
-                      />
+                      <Input type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)} className="input-alpine" />
                     </div>
                     <div className="space-y-2">
                       <Label>Projekt</Label>
-                      <Select
-                        value={manualProject}
-                        onValueChange={(v) => setManualProject(v as WorkType)}
-                      >
-                        <SelectTrigger className="input-alpine">
-                          <SelectValue />
-                        </SelectTrigger>
+                      <Select value={manualProject} onValueChange={setManualProject}>
+                        <SelectTrigger className="input-alpine"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {WORK_TYPES.map((type) => (
-                            <SelectItem key={type} value={type}>
-                              {type}
-                            </SelectItem>
+                          {workTypes.map((type) => (
+                            <SelectItem key={type} value={type}>{type}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -421,26 +427,14 @@ export default function Zeiterfassung() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Start</Label>
-                        <Input
-                          type="time"
-                          value={manualStart}
-                          onChange={(e) => setManualStart(e.target.value)}
-                          className="input-alpine"
-                        />
+                        <Input type="time" value={manualStart} onChange={(e) => setManualStart(e.target.value)} className="input-alpine" />
                       </div>
                       <div className="space-y-2">
                         <Label>Stopp</Label>
-                        <Input
-                          type="time"
-                          value={manualEnd}
-                          onChange={(e) => setManualEnd(e.target.value)}
-                          className="input-alpine"
-                        />
+                        <Input type="time" value={manualEnd} onChange={(e) => setManualEnd(e.target.value)} className="input-alpine" />
                       </div>
                     </div>
-                    <Button onClick={addManualEntry} className="w-full">
-                      Speichern
-                    </Button>
+                    <Button onClick={addManualEntry} className="w-full">Speichern</Button>
                   </div>
                 </DialogContent>
               </Dialog>
@@ -473,10 +467,20 @@ export default function Zeiterfassung() {
                         {formatTime(entry.start_zeit)} - {formatTime(entry.stopp_zeit)}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="flex items-center gap-2">
                       <p className="font-semibold text-sm">
                         {entry.total_stunden ? `${entry.total_stunden.toFixed(1)} h` : '-'}
                       </p>
+                      {entry.stopp_zeit && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => openEditDialog(entry)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -484,6 +488,43 @@ export default function Zeiterfassung() {
             )}
           </CardContent>
         </Card>
+
+        {/* Edit Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Eintrag bearbeiten</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div className="space-y-2">
+                <Label>Datum</Label>
+                <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="input-alpine" />
+              </div>
+              <div className="space-y-2">
+                <Label>Projekt</Label>
+                <Select value={editProject} onValueChange={setEditProject}>
+                  <SelectTrigger className="input-alpine"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {workTypes.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Start</Label>
+                  <Input type="time" value={editStart} onChange={(e) => setEditStart(e.target.value)} className="input-alpine" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Stopp</Label>
+                  <Input type="time" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} className="input-alpine" />
+                </div>
+              </div>
+              <Button onClick={saveEdit} className="w-full">Änderungen speichern</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   );
