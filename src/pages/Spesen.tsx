@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Receipt, Upload, Camera, FileText, Loader2, Pencil } from 'lucide-react';
+import { Receipt, Upload, Camera, FileText, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 
@@ -190,6 +191,18 @@ export default function Spesen() {
     toast({ title: 'Aktualisiert', description: 'Spesen-Eintrag wurde geändert' });
   };
 
+  const deleteExpense = async (expenseId: string) => {
+    const { error } = await supabase.from('expenses').delete().eq('id', expenseId);
+    if (error) {
+      toast({ title: 'Fehler', description: 'Eintrag konnte nicht gelöscht werden', variant: 'destructive' });
+      return;
+    }
+    setEditDialogOpen(false);
+    setEditingExpense(null);
+    fetchExpenses();
+    toast({ title: 'Gelöscht', description: 'Spesen-Eintrag wurde entfernt' });
+  };
+
   return (
     <AppLayout title="Spesen">
       <div className="space-y-6">
@@ -303,6 +316,21 @@ export default function Spesen() {
                 <Textarea value={editBeschreibung} onChange={(e) => setEditBeschreibung(e.target.value)} className="input-alpine resize-none" rows={2} />
               </div>
               <Button onClick={saveEdit} disabled={uploading} className="w-full">{uploading ? 'Speichern...' : 'Änderungen speichern'}</Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" className="w-full gap-2"><Trash2 className="h-4 w-4" /> Eintrag löschen</Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Eintrag löschen?</AlertDialogTitle>
+                    <AlertDialogDescription>Dieser Eintrag wird unwiderruflich gelöscht.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => editingExpense && deleteExpense(editingExpense.id)}>Löschen</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </DialogContent>
         </Dialog>
