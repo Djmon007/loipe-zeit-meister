@@ -134,7 +134,7 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto w-24 h-24 rounded-full overflow-hidden border-2 border-primary/20">
+          <div className="mx-auto w-24 h-24 rounded-full overflow-hidden border-2 border-primary/20 bg-sky-100">
             <img 
               src={logo} 
               alt="Loipen Logo" 

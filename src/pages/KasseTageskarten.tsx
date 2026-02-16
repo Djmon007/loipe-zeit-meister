@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Banknote, Pencil } from 'lucide-react';
+import { Banknote, Pencil, Trash2 } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 
@@ -139,6 +140,18 @@ export default function KasseTageskarten() {
     toast({ title: 'Aktualisiert', description: 'Eintrag wurde geändert' });
   };
 
+  const deleteEntry = async (entryId: string) => {
+    const { error } = await supabase.from('kasse_tageskarten').delete().eq('id', entryId);
+    if (error) {
+      toast({ title: 'Fehler', description: 'Eintrag konnte nicht gelöscht werden', variant: 'destructive' });
+      return;
+    }
+    setEditDialogOpen(false);
+    setEditingEntry(null);
+    fetchEntries();
+    toast({ title: 'Gelöscht', description: 'Eintrag wurde entfernt' });
+  };
+
   return (
     <AppLayout title="Kasse Tageskarten">
       <div className="space-y-6">
@@ -240,6 +253,21 @@ export default function KasseTageskarten() {
               <Button onClick={saveEdit} disabled={saving || !editBetrag} className="w-full">
                 {saving ? 'Speichern...' : 'Änderungen speichern'}
               </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" className="w-full gap-2"><Trash2 className="h-4 w-4" /> Eintrag löschen</Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Eintrag löschen?</AlertDialogTitle>
+                    <AlertDialogDescription>Dieser Eintrag wird unwiderruflich gelöscht.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => editingEntry && deleteEntry(editingEntry.id)}>Löschen</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </DialogContent>
         </Dialog>

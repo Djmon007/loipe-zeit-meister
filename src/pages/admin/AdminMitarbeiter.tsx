@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Users, Pencil } from 'lucide-react';
+import { Users, Pencil, KeyRound } from 'lucide-react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { de } from 'date-fns/locale';
 
@@ -45,7 +45,7 @@ export default function AdminMitarbeiter() {
   const [editVorname, setEditVorname] = useState('');
   const [editNachname, setEditNachname] = useState('');
   const [editRole, setEditRole] = useState('');
-
+  const [resettingPassword, setResettingPassword] = useState(false);
   const fetchData = useCallback(async () => {
     setLoading(true);
 
@@ -227,9 +227,33 @@ export default function AdminMitarbeiter() {
                 </Select>
               </div>
               <p className="text-xs text-muted-foreground">
-                Hinweis: Passwort-Zurücksetzung kann über die Funktion "Passwort vergessen" auf der Anmeldeseite erfolgen.
+                Das neue Passwort wird per E-Mail an den Mitarbeiter gesendet.
               </p>
               <Button onClick={saveEdit} className="w-full">Änderungen speichern</Button>
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                disabled={resettingPassword}
+                onClick={async () => {
+                  if (!editingWorker) return;
+                  setResettingPassword(true);
+                  try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const response = await supabase.functions.invoke('reset-password', {
+                      body: { user_id: editingWorker.profile.user_id },
+                    });
+                    if (response.error) throw response.error;
+                    toast({ title: 'Passwort-Reset', description: `E-Mail wurde an den Mitarbeiter gesendet.` });
+                  } catch (err) {
+                    toast({ title: 'Fehler', description: 'Passwort-Reset konnte nicht gesendet werden', variant: 'destructive' });
+                  } finally {
+                    setResettingPassword(false);
+                  }
+                }}
+              >
+                <KeyRound className="h-4 w-4" />
+                {resettingPassword ? 'Senden...' : 'Neues Passwort senden'}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
