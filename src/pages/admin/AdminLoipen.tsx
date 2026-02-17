@@ -21,29 +21,27 @@ interface Profile {
   nachname: string;
 }
 
-interface LoipeConfigDB {
+interface LoipeConfig {
   id: string;
   name: string;
   has_skating: boolean;
   has_klassisch: boolean;
   has_skipiste: boolean;
   sort_order: number;
-  column_key: string | null;
 }
 
-interface LoipenProtokoll {
-  id: string;
+interface ProtokollRow {
   user_id: string;
   datum: string;
-  profiles?: Profile;
-  [key: string]: unknown;
+  profileName: string;
+  loipen: { name: string; type: string }[];
 }
 
 export default function AdminLoipen() {
   const { toast } = useToast();
-  const [entries, setEntries] = useState<LoipenProtokoll[]>([]);
+  const [rows, setRows] = useState<ProtokollRow[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [loipenConfig, setLoipenConfig] = useState<LoipeConfigDB[]>([]);
+  const [loipenConfig, setLoipenConfig] = useState<LoipeConfig[]>([]);
   const [loading, setLoading] = useState(true);
   
   const [startDate, setStartDate] = useState(format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd'));
@@ -55,21 +53,22 @@ export default function AdminLoipen() {
 
   useEffect(() => {
     const fetchConfig = async () => {
-      const { data } = await supabase.from('loipen_config').select('*').order('sort_order');
-      if (data) setLoipenConfig(data as LoipeConfigDB[]);
+      const { data } = await supabase.from('loipen_config').select('id, name, has_skating, has_klassisch, has_skipiste, sort_order').order('sort_order');
+      if (data) setLoipenConfig(data);
     };
     fetchConfig();
   }, []);
 
   const fetchData = useCallback(async () => {
+    if (loipenConfig.length === 0) return;
     setLoading(true);
     
     const { data: profilesData } = await supabase.from('profiles').select('*');
     setProfiles(profilesData || []);
 
     let query = supabase
-      .from('loipen_protokoll')
-      .select('*')
+      .from('loipen_protokoll_entries')
+      .select('user_id, datum, loipe_config_id, skating, klassisch')
       .gte('datum', startDate)
       .lte('datum', endDate)
       .order('datum', { ascending: false });
@@ -81,19 +80,55 @@ export default function AdminLoipen() {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching loipen:', error);
+      console.error('Error fetching loipen entries:', error);
       setLoading(false);
       return;
     }
 
-    const entriesWithProfiles = (data || []).map(entry => ({
-      ...entry,
-      profiles: (profilesData || []).find(p => p.user_id === entry.user_id),
-    }));
+    // Group by user_id + datum
+    const grouped: Record<string, { user_id: string; datum: string; entries: Record<string, { skating: boolean; klassisch: boolean }> }> = {};
+    (data || []).forEach((entry) => {
+      const key = `${entry.user_id}_${entry.datum}`;
+      if (!grouped[key]) {
+        grouped[key] = { user_id: entry.user_id, datum: entry.datum, entries: {} };
+      }
+      grouped[key].entries[entry.loipe_config_id] = { skating: entry.skating, klassisch: entry.klassisch };
+    });
 
-    setEntries(entriesWithProfiles);
+    const configMap = new Map(loipenConfig.map(l => [l.id, l]));
+    const result: ProtokollRow[] = Object.values(grouped).map((group) => {
+      const profile = (profilesData || []).find(p => p.user_id === group.user_id);
+      const loipen: { name: string; type: string }[] = [];
+      
+      loipenConfig.forEach((loipe) => {
+        const entry = group.entries[loipe.id];
+        if (!entry) return;
+        if (!entry.skating && !entry.klassisch) return;
+        
+        if (loipe.has_skipiste) {
+          loipen.push({ name: loipe.name, type: 'Skipiste' });
+        } else if (entry.skating && entry.klassisch) {
+          loipen.push({ name: loipe.name, type: 'Skating, Klassisch' });
+        } else if (entry.skating) {
+          loipen.push({ name: loipe.name, type: 'Skating' });
+        } else {
+          loipen.push({ name: loipe.name, type: 'Klassisch' });
+        }
+      });
+
+      return {
+        user_id: group.user_id,
+        datum: group.datum,
+        profileName: profile ? `${profile.vorname} ${profile.nachname}` : 'Unbekannt',
+        loipen,
+      };
+    });
+
+    // Sort by date desc
+    result.sort((a, b) => b.datum.localeCompare(a.datum));
+    setRows(result);
     setLoading(false);
-  }, [startDate, endDate, selectedUser]);
+  }, [startDate, endDate, selectedUser, loipenConfig]);
 
   useEffect(() => {
     fetchData();
@@ -124,58 +159,22 @@ export default function AdminLoipen() {
     setEndDate(end);
   };
 
-  const getLoipenForEntry = (entry: LoipenProtokoll) => {
-    const result: { name: string; type: string }[] = [];
-    loipenConfig.forEach(loipe => {
-      if (!loipe.column_key) return;
-      const skating = entry[`${loipe.column_key}_skating`] as boolean;
-      const klassisch = entry[`${loipe.column_key}_klassisch`] as boolean;
-      if (!skating && !klassisch) return;
-
-      if (loipe.has_skipiste) {
-        if (skating || klassisch) {
-          result.push({ name: loipe.name, type: 'Skipiste' });
-        }
-      } else {
-        if (skating && klassisch) {
-          result.push({ name: loipe.name, type: 'Skating, Klassisch' });
-        } else if (skating) {
-          result.push({ name: loipe.name, type: 'Skating' });
-        } else if (klassisch) {
-          result.push({ name: loipe.name, type: 'Klassisch' });
-        }
-      }
-    });
-    return result;
-  };
-
-  const countLoipen = (entry: LoipenProtokoll): number => {
-    return getLoipenForEntry(entry).length;
-  };
-
   const exportCSV = () => {
-    if (entries.length === 0) {
+    if (rows.length === 0) {
       toast({ title: 'Keine Daten', description: 'Keine Einträge für diesen Zeitraum gefunden' });
       return;
     }
 
-    const loipenWithKeys = loipenConfig.filter(l => l.column_key);
-    const headers = ['Datum', 'Mitarbeiter', 'Präpariert', ...loipenWithKeys.map(l => l.name)];
-    const rows = entries.map((entry) => {
-      const name = entry.profiles ? `${entry.profiles.vorname} ${entry.profiles.nachname}` : 'Unbekannt';
-      const loipenValues = loipenWithKeys.map(loipe => {
-        const skating = entry[`${loipe.column_key}_skating`] as boolean;
-        const klassisch = entry[`${loipe.column_key}_klassisch`] as boolean;
-        if (loipe.has_skipiste) return (skating || klassisch) ? 'Skipiste' : '';
-        const parts = [];
-        if (skating) parts.push('Skating');
-        if (klassisch) parts.push('Klassisch');
-        return parts.join(', ');
+    const headers = ['Datum', 'Mitarbeiter', 'Anzahl', ...loipenConfig.map(l => l.name)];
+    const csvRows = rows.map((row) => {
+      const loipenValues = loipenConfig.map((loipe) => {
+        const found = row.loipen.find(l => l.name === loipe.name);
+        return found ? found.type : '';
       });
-      return [format(new Date(entry.datum), 'dd.MM.yyyy'), name, countLoipen(entry).toString(), ...loipenValues];
+      return [format(new Date(row.datum), 'dd.MM.yyyy'), row.profileName, row.loipen.length.toString(), ...loipenValues];
     });
 
-    const csvContent = [headers.join(';'), ...rows.map((row) => row.join(';'))].join('\n');
+    const csvContent = [headers.join(';'), ...csvRows.map((r) => r.join(';'))].join('\n');
     const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -188,8 +187,6 @@ export default function AdminLoipen() {
 
     toast({ title: 'Export erfolgreich', description: 'CSV-Datei wurde heruntergeladen' });
   };
-
-  const loipenWithKeys = loipenConfig.filter(l => l.column_key);
 
   return (
     <AdminLayout title="Loipen-Protokoll">
@@ -247,14 +244,14 @@ export default function AdminLoipen() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <MapPin className="h-4 w-4 text-primary" />
-            <span className="font-medium">{entries.length} Protokolle</span>
+            <span className="font-medium">{rows.length} Protokolle</span>
           </div>
           <Button onClick={exportCSV} variant="outline" className="gap-2">
             <Download className="h-4 w-4" /> CSV Export
           </Button>
         </div>
 
-        {/* Table with track names in header */}
+        {/* Table */}
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -264,7 +261,7 @@ export default function AdminLoipen() {
                     <TableHead>Datum</TableHead>
                     <TableHead>Mitarbeiter</TableHead>
                     <TableHead>Präpariert</TableHead>
-                    {loipenWithKeys.map(loipe => (
+                    {loipenConfig.map(loipe => (
                       <TableHead key={loipe.id} className="text-center min-w-[100px]">
                         {loipe.name}
                       </TableHead>
@@ -274,48 +271,26 @@ export default function AdminLoipen() {
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={3 + loipenWithKeys.length} className="text-center py-8 text-muted-foreground">Laden...</TableCell>
+                      <TableCell colSpan={3 + loipenConfig.length} className="text-center py-8 text-muted-foreground">Laden...</TableCell>
                     </TableRow>
-                  ) : entries.length === 0 ? (
+                  ) : rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3 + loipenWithKeys.length} className="text-center py-8 text-muted-foreground">Keine Einträge gefunden</TableCell>
+                      <TableCell colSpan={3 + loipenConfig.length} className="text-center py-8 text-muted-foreground">Keine Einträge gefunden</TableCell>
                     </TableRow>
                   ) : (
-                    entries.map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell>{format(new Date(entry.datum), 'dd.MM.yyyy', { locale: de })}</TableCell>
+                    rows.map((row, idx) => (
+                      <TableRow key={`${row.user_id}_${row.datum}_${idx}`}>
+                        <TableCell>{format(new Date(row.datum), 'dd.MM.yyyy', { locale: de })}</TableCell>
+                        <TableCell>{row.profileName}</TableCell>
                         <TableCell>
-                          {entry.profiles ? `${entry.profiles.vorname} ${entry.profiles.nachname}` : 'Unbekannt'}
+                          <Badge variant="secondary">{row.loipen.length}</Badge>
                         </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">{countLoipen(entry)}</Badge>
-                        </TableCell>
-                        {loipenWithKeys.map(loipe => {
-                          const skating = entry[`${loipe.column_key}_skating`] as boolean;
-                          const klassisch = entry[`${loipe.column_key}_klassisch`] as boolean;
-                          
-                          if (loipe.has_skipiste) {
-                            return (
-                              <TableCell key={loipe.id} className="text-center">
-                                {(skating || klassisch) ? (
-                                  <Badge variant="outline" className="text-xs">Skipiste</Badge>
-                                ) : '-'}
-                              </TableCell>
-                            );
-                          }
-                          
-                          const parts = [];
-                          if (skating) parts.push('Skating');
-                          if (klassisch) parts.push('Klassisch');
-                          
+                        {loipenConfig.map(loipe => {
+                          const found = row.loipen.find(l => l.name === loipe.name);
                           return (
                             <TableCell key={loipe.id} className="text-center">
-                              {parts.length > 0 ? (
-                                <div className="flex flex-col gap-1 items-center">
-                                  {parts.map(p => (
-                                    <Badge key={p} variant="outline" className="text-xs">{p}</Badge>
-                                  ))}
-                                </div>
+                              {found ? (
+                                <Badge variant="outline" className="text-xs">{found.type}</Badge>
                               ) : '-'}
                             </TableCell>
                           );

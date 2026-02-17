@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { z } from 'zod';
-import logo from '@/assets/logo.jpg';
+import logo from '@/assets/logo.png';
 
 const loginSchema = z.object({
   email: z.string().email('Ungültige E-Mail-Adresse'),
@@ -134,7 +134,7 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto w-24 h-24 rounded-full overflow-hidden border-2 border-primary/20 bg-sky-100">
+          <div className="mx-auto w-24 h-24 rounded-full overflow-hidden border-2 border-primary/20 bg-sky-100/50">
             <img 
               src={logo} 
               alt="Loipen Logo" 

@@ -3,7 +3,7 @@ import { BottomNav } from './BottomNav';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
-import logo from '@/assets/logo.jpg';
+import logo from '@/assets/logo.png';
 
 interface AppLayoutProps {
   children: ReactNode;

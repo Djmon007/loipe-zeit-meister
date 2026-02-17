@@ -228,6 +228,44 @@ export type Database = {
           },
         ]
       }
+      loipen_protokoll_entries: {
+        Row: {
+          created_at: string
+          datum: string
+          id: string
+          klassisch: boolean
+          loipe_config_id: string
+          skating: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          datum?: string
+          id?: string
+          klassisch?: boolean
+          loipe_config_id: string
+          skating?: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          datum?: string
+          id?: string
+          klassisch?: boolean
+          loipe_config_id?: string
+          skating?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loipen_protokoll_entries_loipe_config_id_fkey"
+            columns: ["loipe_config_id"]
+            isOneToOne: false
+            referencedRelation: "loipen_config"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
