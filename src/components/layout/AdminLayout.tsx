@@ -20,7 +20,7 @@ import {
   ListTodo,
   Settings,
 } from 'lucide-react';
-import logo from '@/assets/logo.jpg';
+import logo from '@/assets/logo.png';
 
 interface AdminLayoutProps {
   children: ReactNode;

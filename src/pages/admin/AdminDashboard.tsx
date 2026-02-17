@@ -3,11 +3,11 @@ import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
-import { Clock, Fuel, Receipt, MapPin, Banknote, ArrowRight } from 'lucide-react';
+import { Clock, Fuel, Receipt, MapPin, Banknote, ArrowRight, Users } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Link } from 'react-router-dom';
-import { getSeasonDates, getSeasonLabel } from '@/lib/seasonUtils';
+import { getSeasonLabel } from '@/lib/seasonUtils';
 
 interface DashboardStats {
   totalHoursWeek: number;
@@ -16,13 +16,15 @@ interface DashboardStats {
   totalExpensesMonth: number;
   totalKasseMonth: number;
   loipenToday: number;
+  mitarbeiterCount: number;
 }
 
 interface RecentActivity {
-  type: 'time' | 'loipe' | 'diesel' | 'expense';
+  type: 'time' | 'loipe' | 'diesel' | 'expense' | 'kasse';
   user: string;
   description: string;
   time: string;
+  sortDate: string;
 }
 
 export default function AdminDashboard() {
@@ -33,6 +35,7 @@ export default function AdminDashboard() {
     totalExpensesMonth: 0,
     totalKasseMonth: 0,
     loipenToday: 0,
+    mitarbeiterCount: 0,
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,15 +55,25 @@ export default function AdminDashboard() {
       { data: monthExpenses },
       { data: monthKasse },
       { data: todayLoipen },
+      { data: profilesData },
       { data: recentTimeEntries },
+      { data: recentDiesel },
+      { data: recentExpenses },
+      { data: recentKasse },
+      { data: recentLoipenEntries },
     ] = await Promise.all([
       supabase.from('time_entries').select('total_stunden').gte('datum', weekStart).lte('datum', weekEnd),
       supabase.from('time_entries').select('total_stunden').gte('datum', monthStart).lte('datum', monthEnd),
       supabase.from('diesel_entries').select('liter').gte('datum', monthStart).lte('datum', monthEnd),
       supabase.from('expenses').select('betrag').gte('datum', monthStart).lte('datum', monthEnd),
       supabase.from('kasse_tageskarten').select('betrag').gte('datum', monthStart).lte('datum', monthEnd),
-      supabase.from('loipen_protokoll').select('id').eq('datum', today),
+      supabase.from('loipen_protokoll_entries').select('id').eq('datum', today),
+      supabase.from('profiles').select('id'),
       supabase.from('time_entries').select('*, profiles!inner(vorname, nachname)').order('created_at', { ascending: false }).limit(5),
+      supabase.from('diesel_entries').select('*, profiles!inner(vorname, nachname)').order('created_at', { ascending: false }).limit(3),
+      supabase.from('expenses').select('*, profiles!inner(vorname, nachname)').order('created_at', { ascending: false }).limit(3),
+      supabase.from('kasse_tageskarten').select('*, profiles!inner(vorname, nachname)').order('created_at', { ascending: false }).limit(3),
+      supabase.from('loipen_protokoll_entries').select('*, profiles!inner(vorname, nachname), loipen_config!inner(name)').order('created_at', { ascending: false }).limit(3),
     ]);
 
     const totalHoursWeek = (weekTime || []).reduce((sum, e) => sum + (e.total_stunden || 0), 0);
@@ -69,23 +82,75 @@ export default function AdminDashboard() {
     const totalExpensesMonth = (monthExpenses || []).reduce((sum, e) => sum + (e.betrag || 0), 0);
     const totalKasseMonth = (monthKasse || []).reduce((sum, e) => sum + (e.betrag || 0), 0);
 
+    // Count unique users from today's loipen entries
+    const uniqueLoipenUsers = new Set((todayLoipen || []).map((e: any) => e.user_id));
+
     setStats({
       totalHoursWeek,
       totalHoursMonth,
       totalDieselMonth,
       totalExpensesMonth,
       totalKasseMonth,
-      loipenToday: (todayLoipen || []).length,
+      loipenToday: uniqueLoipenUsers.size || (todayLoipen || []).length,
+      mitarbeiterCount: (profilesData || []).length,
     });
 
-    const activities: RecentActivity[] = (recentTimeEntries || []).slice(0, 5).map((entry: any) => ({
-      type: 'time' as const,
-      user: `${entry.profiles?.vorname || ''} ${entry.profiles?.nachname || ''}`.trim() || 'Unbekannt',
-      description: `${entry.arbeit}: ${entry.total_stunden?.toFixed(1) || '–'} Stunden`,
-      time: format(new Date(entry.created_at), 'dd.MM. HH:mm', { locale: de }),
-    }));
+    // Build combined recent activities
+    const activities: RecentActivity[] = [];
+    
+    (recentTimeEntries || []).forEach((entry: any) => {
+      activities.push({
+        type: 'time',
+        user: `${entry.profiles?.vorname || ''} ${entry.profiles?.nachname || ''}`.trim() || 'Unbekannt',
+        description: `${entry.arbeit}: ${entry.total_stunden?.toFixed(1) || '–'} h`,
+        time: format(new Date(entry.created_at), 'dd.MM. HH:mm', { locale: de }),
+        sortDate: entry.created_at,
+      });
+    });
 
-    setRecentActivity(activities);
+    (recentDiesel || []).forEach((entry: any) => {
+      activities.push({
+        type: 'diesel',
+        user: `${entry.profiles?.vorname || ''} ${entry.profiles?.nachname || ''}`.trim() || 'Unbekannt',
+        description: `Diesel: ${entry.liter} L`,
+        time: format(new Date(entry.created_at), 'dd.MM. HH:mm', { locale: de }),
+        sortDate: entry.created_at,
+      });
+    });
+
+    (recentExpenses || []).forEach((entry: any) => {
+      activities.push({
+        type: 'expense',
+        user: `${entry.profiles?.vorname || ''} ${entry.profiles?.nachname || ''}`.trim() || 'Unbekannt',
+        description: `Spesen: CHF ${entry.betrag || 0}`,
+        time: format(new Date(entry.created_at), 'dd.MM. HH:mm', { locale: de }),
+        sortDate: entry.created_at,
+      });
+    });
+
+    (recentKasse || []).forEach((entry: any) => {
+      activities.push({
+        type: 'kasse',
+        user: `${entry.profiles?.vorname || ''} ${entry.profiles?.nachname || ''}`.trim() || 'Unbekannt',
+        description: `Kasse: CHF ${entry.betrag}`,
+        time: format(new Date(entry.created_at), 'dd.MM. HH:mm', { locale: de }),
+        sortDate: entry.created_at,
+      });
+    });
+
+    (recentLoipenEntries || []).forEach((entry: any) => {
+      activities.push({
+        type: 'loipe',
+        user: `${entry.profiles?.vorname || ''} ${entry.profiles?.nachname || ''}`.trim() || 'Unbekannt',
+        description: `Loipe: ${entry.loipen_config?.name || '–'}`,
+        time: format(new Date(entry.created_at), 'dd.MM. HH:mm', { locale: de }),
+        sortDate: entry.created_at,
+      });
+    });
+
+    // Sort by date desc and take top 8
+    activities.sort((a, b) => b.sortDate.localeCompare(a.sortDate));
+    setRecentActivity(activities.slice(0, 8));
     setLoading(false);
   }, []);
 
@@ -102,6 +167,7 @@ export default function AdminDashboard() {
     { label: 'Spesen (Monat)', value: `CHF ${stats.totalExpensesMonth.toFixed(0)}`, icon: Receipt, color: 'text-info' },
     { label: 'Kasse (Monat)', value: `CHF ${stats.totalKasseMonth.toFixed(0)}`, icon: Banknote, color: 'text-success' },
     { label: 'Loipen heute', value: stats.loipenToday.toString(), icon: MapPin, color: 'text-primary' },
+    { label: 'Mitarbeiter', value: stats.mitarbeiterCount.toString(), icon: Users, color: 'text-muted-foreground' },
   ];
 
   const quickLinks = [
