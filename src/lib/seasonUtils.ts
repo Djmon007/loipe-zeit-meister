@@ -33,7 +33,7 @@ export function getSeasonLabel(date: Date): string {
   return `Saison ${seasonStartYear}-${seasonEndYear.toString().padStart(2, '0')}`;
 }
 
-export function getAvailableSeasons(startYear: number = 2020): string[] {
+export function getAvailableSeasons(startYear: number = 2025): string[] {
   const now = new Date();
   const currentSeasonStartYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
   
