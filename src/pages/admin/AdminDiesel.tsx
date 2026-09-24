@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Download, Fuel, Calendar } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { getSeasonDates, getSeasonLabel, getAvailableSeasons } from '@/lib/seasonUtils';
+import { getSeasonDates, getSeasonLabel } from '@/lib/seasonUtils';
+import { useSeasons } from '@/hooks/useSeasons';
 
 interface Profile {
   id: string;
@@ -44,7 +45,7 @@ export default function AdminDiesel() {
   const [selectedUser, setSelectedUser] = useState<string>('all');
   const [selectedTank, setSelectedTank] = useState<string>('all');
 
-  const availableSeasons = useMemo(() => getAvailableSeasons(), []);
+  const { seasonLabels: availableSeasons } = useSeasons();
 
   const fetchData = useCallback(async () => {
     setLoading(true);

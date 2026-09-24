@@ -19,6 +19,7 @@ import {
   Banknote,
   ListTodo,
   Settings,
+  CalendarRange,
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
@@ -37,6 +38,7 @@ const navItems = [
   { href: '/admin/mitarbeiter', icon: Users, label: 'Mitarbeiter' },
   { href: '/admin/aufgaben', icon: ListTodo, label: 'Aufgaben' },
   { href: '/admin/loipen-config', icon: Settings, label: 'Loipen-Konfiguration' },
+  { href: '/admin/saisons', icon: CalendarRange, label: 'Saisons' },
 ];
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
