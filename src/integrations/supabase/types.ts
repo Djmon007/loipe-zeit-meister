@@ -293,6 +293,24 @@ export type Database = {
         }
         Relationships: []
       }
+      seasons: {
+        Row: {
+          created_at: string
+          id: string
+          start_year: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          start_year: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          start_year?: number
+        }
+        Relationships: []
+      }
       tasks: {
         Row: {
           created_at: string
