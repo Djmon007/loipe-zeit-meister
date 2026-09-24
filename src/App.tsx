@@ -24,6 +24,7 @@ import AdminMitarbeiter from "./pages/admin/AdminMitarbeiter";
 import AdminKasse from "./pages/admin/AdminKasse";
 import AdminAufgaben from "./pages/admin/AdminAufgaben";
 import AdminLoipenConfig from "./pages/admin/AdminLoipenConfig";
+import AdminSaisons from "./pages/admin/AdminSaisons";
 
 const queryClient = new QueryClient();
 
@@ -216,6 +217,14 @@ function AppRoutes() {
         element={
           <AdminRoute>
             <AdminLoipenConfig />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/saisons"
+        element={
+          <AdminRoute>
+            <AdminSaisons />
           </AdminRoute>
         }
       />

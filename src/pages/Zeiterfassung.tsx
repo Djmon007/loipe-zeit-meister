@@ -13,6 +13,7 @@ import { Play, Square, Plus, Clock, Calendar, Pause, PlayCircle, Pencil, Trash2 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { de } from 'date-fns/locale';
+import { formatHoursAndMinutes, parseHoursAndMinutes } from '@/lib/timeUtils';
 
 interface TimeEntry {
   id: string;
@@ -44,8 +45,7 @@ export default function Zeiterfassung() {
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [manualDate, setManualDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [manualProject, setManualProject] = useState('');
-  const [manualStart, setManualStart] = useState('');
-  const [manualEnd, setManualEnd] = useState('');
+  const [manualDuration, setManualDuration] = useState('');
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -54,6 +54,7 @@ export default function Zeiterfassung() {
   const [editProject, setEditProject] = useState('');
   const [editStart, setEditStart] = useState('');
   const [editEnd, setEditEnd] = useState('');
+  const [editDuration, setEditDuration] = useState('');
 
   // Fetch dynamic tasks
   useEffect(() => {
@@ -216,14 +217,11 @@ export default function Zeiterfassung() {
   };
 
   const addManualEntry = async () => {
-    if (!user || !manualStart || !manualEnd || !manualProject) return;
+    if (!user || !manualProject) return;
 
-    const start = new Date(`${manualDate}T${manualStart}`);
-    const end = new Date(`${manualDate}T${manualEnd}`);
-    const totalHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-
-    if (totalHours <= 0) {
-      toast({ title: 'Fehler', description: 'Endzeit muss nach Startzeit sein', variant: 'destructive' });
+    const totalHours = parseHoursAndMinutes(manualDuration);
+    if (totalHours === null) {
+      toast({ title: 'Fehler', description: 'Bitte Stunden im Format HH:MM eingeben', variant: 'destructive' });
       return;
     }
 
@@ -231,9 +229,9 @@ export default function Zeiterfassung() {
       user_id: user.id,
       datum: manualDate,
       arbeit: manualProject,
-      start_zeit: manualStart + ':00',
-      stopp_zeit: manualEnd + ':00',
-      total_stunden: Math.round(totalHours * 100) / 100,
+      start_zeit: null,
+      stopp_zeit: null,
+      total_stunden: totalHours,
     });
 
     if (error) {
@@ -242,10 +240,9 @@ export default function Zeiterfassung() {
     }
 
     setManualDialogOpen(false);
-    setManualStart('');
-    setManualEnd('');
+    setManualDuration('');
     fetchEntries();
-    toast({ title: 'Eintrag gespeichert', description: `${Math.round(totalHours * 100) / 100} Stunden erfasst` });
+    toast({ title: 'Eintrag gespeichert', description: `${manualDuration} Stunden erfasst` });
   };
 
   const openEditDialog = (entry: TimeEntry) => {
@@ -254,19 +251,30 @@ export default function Zeiterfassung() {
     setEditProject(entry.arbeit);
     setEditStart(entry.start_zeit?.substring(0, 5) || '');
     setEditEnd(entry.stopp_zeit?.substring(0, 5) || '');
+    setEditDuration(formatHoursAndMinutes(entry.total_stunden));
     setEditDialogOpen(true);
   };
 
   const saveEdit = async () => {
-    if (!editingEntry || !editStart || !editEnd) return;
+    if (!editingEntry) return;
 
-    const start = new Date(`${editDate}T${editStart}`);
-    const end = new Date(`${editDate}T${editEnd}`);
-    const totalHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-
-    if (totalHours <= 0) {
-      toast({ title: 'Fehler', description: 'Endzeit muss nach Startzeit sein', variant: 'destructive' });
-      return;
+    const isManual = !editingEntry.start_zeit && !editingEntry.stopp_zeit;
+    let totalHours: number | null = null;
+    if (isManual) {
+      totalHours = parseHoursAndMinutes(editDuration);
+      if (totalHours === null) {
+        toast({ title: 'Fehler', description: 'Bitte Stunden im Format HH:MM eingeben', variant: 'destructive' });
+        return;
+      }
+    } else {
+      if (!editStart || !editEnd) return;
+      const start = new Date(`${editDate}T${editStart}`);
+      const end = new Date(`${editDate}T${editEnd}`);
+      totalHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+      if (totalHours <= 0) {
+        toast({ title: 'Fehler', description: 'Endzeit muss nach Startzeit sein', variant: 'destructive' });
+        return;
+      }
     }
 
     const { error } = await supabase
@@ -274,8 +282,8 @@ export default function Zeiterfassung() {
       .update({
         datum: editDate,
         arbeit: editProject,
-        start_zeit: editStart + ':00',
-        stopp_zeit: editEnd + ':00',
+        start_zeit: isManual ? null : editStart + ':00',
+        stopp_zeit: isManual ? null : editEnd + ':00',
         total_stunden: Math.round(totalHours * 100) / 100,
       })
       .eq('id', editingEntry.id);
@@ -437,15 +445,17 @@ export default function Zeiterfassung() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Start</Label>
-                        <Input type="time" value={manualStart} onChange={(e) => setManualStart(e.target.value)} className="input-alpine" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Stopp</Label>
-                        <Input type="time" value={manualEnd} onChange={(e) => setManualEnd(e.target.value)} className="input-alpine" />
-                      </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="manual-duration">Stunden (HH:MM)</Label>
+                      <Input
+                        id="manual-duration"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="z. B. 02:30"
+                        value={manualDuration}
+                        onChange={(e) => setManualDuration(e.target.value)}
+                        className="input-alpine"
+                      />
                     </div>
                     <Button onClick={addManualEntry} className="w-full">Speichern</Button>
                   </div>
@@ -477,14 +487,16 @@ export default function Zeiterfassung() {
                       <p className="text-xs text-muted-foreground">
                         {format(new Date(entry.datum), 'dd.MM.yyyy', { locale: de })}
                         {' • '}
-                        {formatTime(entry.start_zeit)} - {formatTime(entry.stopp_zeit)}
+                         {entry.start_zeit || entry.stopp_zeit
+                           ? `${formatTime(entry.start_zeit)} - ${formatTime(entry.stopp_zeit)}`
+                           : `${formatHoursAndMinutes(entry.total_stunden)} Stunden`}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-sm">
                         {entry.total_stunden ? `${entry.total_stunden.toFixed(1)} h` : '-'}
                       </p>
-                      {entry.stopp_zeit && (
+                      {entry.total_stunden !== null && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -524,16 +536,23 @@ export default function Zeiterfassung() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Start</Label>
-                  <Input type="time" value={editStart} onChange={(e) => setEditStart(e.target.value)} className="input-alpine" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Stopp</Label>
-                  <Input type="time" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} className="input-alpine" />
-                </div>
-              </div>
+               {editingEntry?.start_zeit || editingEntry?.stopp_zeit ? (
+                 <div className="grid grid-cols-2 gap-4">
+                   <div className="space-y-2">
+                     <Label>Start</Label>
+                     <Input type="time" value={editStart} onChange={(e) => setEditStart(e.target.value)} className="input-alpine" />
+                   </div>
+                   <div className="space-y-2">
+                     <Label>Stopp</Label>
+                     <Input type="time" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} className="input-alpine" />
+                   </div>
+                 </div>
+               ) : (
+                 <div className="space-y-2">
+                   <Label>Stunden (HH:MM)</Label>
+                   <Input type="text" inputMode="numeric" placeholder="z. B. 02:30" value={editDuration} onChange={(e) => setEditDuration(e.target.value)} className="input-alpine" />
+                 </div>
+               )}
               <Button onClick={saveEdit} className="w-full">Änderungen speichern</Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>

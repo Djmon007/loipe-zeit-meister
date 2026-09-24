@@ -12,7 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Download, Filter, MapPin } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { getSeasonDates, getSeasonLabel, getAvailableSeasons } from '@/lib/seasonUtils';
+import { getSeasonDates } from '@/lib/seasonUtils';
+import { useSeasons } from '@/hooks/useSeasons';
 
 interface Profile {
   id: string;
@@ -49,7 +50,7 @@ export default function AdminLoipen() {
   const [selectedUser, setSelectedUser] = useState<string>('all');
   const [selectedSeason, setSelectedSeason] = useState('');
 
-  const availableSeasons = getAvailableSeasons();
+  const { seasonLabels: availableSeasons } = useSeasons();
 
   useEffect(() => {
     const fetchConfig = async () => {
