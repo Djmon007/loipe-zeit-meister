@@ -5,3 +5,4 @@
 - [x] Saison-Auswahl in allen Admin-Auswertungen vereinheitlichen
 - [x] Admin-Bearbeitung für Arbeitszeiten ergänzen
 - [x] Datenbankrechte und App-Abläufe prüfen
+- [x] Manuelle Eingabe mit Start, Stopp und festem HH:MM-Doppelpunkt ergänzen
