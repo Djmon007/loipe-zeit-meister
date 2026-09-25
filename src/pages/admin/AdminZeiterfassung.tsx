@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,12 +6,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Clock, Calendar } from 'lucide-react';
+import { Download, Clock, Calendar, Pencil } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { getSeasonDates, getSeasonLabel, getAvailableSeasons } from '@/lib/seasonUtils';
+import { getSeasonDates, getSeasonLabel } from '@/lib/seasonUtils';
+import { useSeasons } from '@/hooks/useSeasons';
+import { parseHoursAndMinutes, formatHoursAndMinutes } from '@/lib/timeUtils';
 
 interface Profile {
   id: string;
@@ -20,7 +23,7 @@ interface Profile {
   nachname: string;
 }
 
-type WorkType = 'Loipenpräparation' | 'Aufbau' | 'Abbau' | 'Verschiedenes';
+type WorkType = string;
 
 interface TimeEntry {
   id: string;
@@ -47,8 +50,69 @@ export default function AdminZeiterfassung() {
   const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [selectedUser, setSelectedUser] = useState<string>('all');
   const [selectedProject, setSelectedProject] = useState<string>('all');
+  const [tasks, setTasks] = useState<string[]>([]);
+  const [editing, setEditing] = useState<TimeEntry | null>(null);
+  const [editDatum, setEditDatum] = useState('');
+  const [editArbeit, setEditArbeit] = useState('');
+  const [editStart, setEditStart] = useState('');
+  const [editStopp, setEditStopp] = useState('');
+  const [editDauer, setEditDauer] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const availableSeasons = useMemo(() => getAvailableSeasons(), []);
+  const { seasonLabels: availableSeasons } = useSeasons();
+
+  useEffect(() => {
+    supabase.from('tasks').select('name').order('name').then(({ data }) => {
+      setTasks((data || []).map((t) => t.name));
+    });
+  }, []);
+
+  const openEdit = (entry: TimeEntry) => {
+    setEditing(entry);
+    setEditDatum(entry.datum);
+    setEditArbeit(entry.arbeit);
+    setEditStart(entry.start_zeit?.substring(0, 5) || '');
+    setEditStopp(entry.stopp_zeit?.substring(0, 5) || '');
+    setEditDauer(formatHoursAndMinutes(entry.total_stunden));
+  };
+
+  const isManual = editing ? !editing.start_zeit && !editing.stopp_zeit : false;
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    let total: number | null;
+    const update: Record<string, unknown> = { datum: editDatum, arbeit: editArbeit };
+    if (isManual) {
+      total = parseHoursAndMinutes(editDauer);
+      if (total === null) {
+        toast({ title: 'Ungültige Dauer', description: 'Bitte im Format HH:MM eingeben', variant: 'destructive' });
+        return;
+      }
+    } else {
+      if (!editStart || !editStopp) {
+        toast({ title: 'Fehlende Zeit', description: 'Start und Stopp angeben', variant: 'destructive' });
+        return;
+      }
+      const [sh, sm] = editStart.split(':').map(Number);
+      const [eh, em] = editStopp.split(':').map(Number);
+      let mins = eh * 60 + em - (sh * 60 + sm);
+      if (mins <= 0) mins += 24 * 60;
+      total = Math.round((mins / 60) * 100) / 100;
+      update.start_zeit = editStart;
+      update.stopp_zeit = editStopp;
+    }
+    update.total_stunden = total;
+    setSaving(true);
+    const { error } = await supabase.from('time_entries').update(update).eq('id', editing.id);
+    setSaving(false);
+    if (error) {
+      toast({ title: 'Fehler', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Gespeichert', description: 'Eintrag wurde aktualisiert' });
+    setEditing(null);
+    fetchData();
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
