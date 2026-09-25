@@ -45,7 +45,10 @@ export default function Zeiterfassung() {
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [manualDate, setManualDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [manualProject, setManualProject] = useState('');
-  const [manualDuration, setManualDuration] = useState('');
+  const [manualStart, setManualStart] = useState('');
+  const [manualEnd, setManualEnd] = useState('');
+  const [manualHours, setManualHours] = useState('');
+  const [manualMinutes, setManualMinutes] = useState('');
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -219,9 +222,30 @@ export default function Zeiterfassung() {
   const addManualEntry = async () => {
     if (!user || !manualProject) return;
 
-    const totalHours = parseHoursAndMinutes(manualDuration);
-    if (totalHours === null) {
-      toast({ title: 'Fehler', description: 'Bitte Stunden im Format HH:MM eingeben', variant: 'destructive' });
+    const hasDuration = manualHours !== '' || manualMinutes !== '';
+    const hasStartOrEnd = manualStart !== '' || manualEnd !== '';
+
+    if (hasStartOrEnd && (!manualStart || !manualEnd)) {
+      toast({ title: 'Fehler', description: 'Bitte Start und Stopp vollständig eingeben', variant: 'destructive' });
+      return;
+    }
+
+    let totalHours: number | null = null;
+    if (hasDuration) {
+      const duration = `${manualHours || '0'}:${(manualMinutes || '0').padStart(2, '0')}`;
+      totalHours = parseHoursAndMinutes(duration);
+      if (totalHours === null) {
+        toast({ title: 'Fehler', description: 'Bitte gültige Stunden und Minuten eingeben', variant: 'destructive' });
+        return;
+      }
+    } else if (manualStart && manualEnd) {
+      const [startHour, startMinute] = manualStart.split(':').map(Number);
+      const [endHour, endMinute] = manualEnd.split(':').map(Number);
+      let totalMinutes = endHour * 60 + endMinute - (startHour * 60 + startMinute);
+      if (totalMinutes <= 0) totalMinutes += 24 * 60;
+      totalHours = Math.round((totalMinutes / 60) * 100) / 100;
+    } else {
+      toast({ title: 'Fehler', description: 'Bitte Start und Stopp oder Stunden eingeben', variant: 'destructive' });
       return;
     }
 
@@ -229,8 +253,8 @@ export default function Zeiterfassung() {
       user_id: user.id,
       datum: manualDate,
       arbeit: manualProject,
-      start_zeit: null,
-      stopp_zeit: null,
+      start_zeit: manualStart && manualEnd ? `${manualStart}:00` : null,
+      stopp_zeit: manualStart && manualEnd ? `${manualEnd}:00` : null,
       total_stunden: totalHours,
     });
 
@@ -240,9 +264,12 @@ export default function Zeiterfassung() {
     }
 
     setManualDialogOpen(false);
-    setManualDuration('');
+    setManualStart('');
+    setManualEnd('');
+    setManualHours('');
+    setManualMinutes('');
     fetchEntries();
-    toast({ title: 'Eintrag gespeichert', description: `${manualDuration} Stunden erfasst` });
+    toast({ title: 'Eintrag gespeichert', description: `${formatHoursAndMinutes(totalHours)} Stunden erfasst` });
   };
 
   const openEditDialog = (entry: TimeEntry) => {
@@ -445,17 +472,54 @@ export default function Zeiterfassung() {
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="manual-start">Start</Label>
+                        <Input
+                          id="manual-start"
+                          type="time"
+                          value={manualStart}
+                          onChange={(e) => setManualStart(e.target.value)}
+                          className="input-alpine"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="manual-end">Stopp</Label>
+                        <Input
+                          id="manual-end"
+                          type="time"
+                          value={manualEnd}
+                          onChange={(e) => setManualEnd(e.target.value)}
+                          className="input-alpine"
+                        />
+                      </div>
+                    </div>
                     <div className="space-y-2">
-                      <Label htmlFor="manual-duration">Stunden (HH:MM)</Label>
-                      <Input
-                        id="manual-duration"
-                        type="text"
-                        inputMode="numeric"
-                        placeholder="z. B. 02:30"
-                        value={manualDuration}
-                        onChange={(e) => setManualDuration(e.target.value)}
-                        className="input-alpine"
-                      />
+                      <Label>Stunden</Label>
+                      <div className="flex h-10 w-full max-w-64 items-center rounded-md border border-input bg-background px-3 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+                        <input
+                          aria-label="Stunden"
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          placeholder="00"
+                          value={manualHours}
+                          onChange={(e) => setManualHours(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                          className="h-full min-w-0 flex-1 bg-transparent text-center text-sm outline-none placeholder:text-muted-foreground"
+                        />
+                        <span aria-hidden="true" className="px-2 text-lg font-semibold text-foreground">:</span>
+                        <input
+                          aria-label="Minuten"
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          placeholder="00"
+                          value={manualMinutes}
+                          onChange={(e) => setManualMinutes(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                          className="h-full min-w-0 flex-1 bg-transparent text-center text-sm outline-none placeholder:text-muted-foreground"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">Start und Stopp oder Stunden eingeben</p>
                     </div>
                     <Button onClick={addManualEntry} className="w-full">Speichern</Button>
                   </div>
