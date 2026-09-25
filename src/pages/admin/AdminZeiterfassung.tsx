@@ -81,7 +81,7 @@ export default function AdminZeiterfassung() {
   const saveEdit = async () => {
     if (!editing) return;
     let total: number | null;
-    const update: Record<string, unknown> = { datum: editDatum, arbeit: editArbeit };
+    const update: { datum: string; arbeit: string; start_zeit?: string; stopp_zeit?: string; total_stunden?: number } = { datum: editDatum, arbeit: editArbeit };
     if (isManual) {
       total = parseHoursAndMinutes(editDauer);
       if (total === null) {
