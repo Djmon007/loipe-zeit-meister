@@ -148,7 +148,7 @@ export default function AdminZeiterfassung() {
     }
 
     if (selectedProject !== 'all') {
-      query = query.eq('arbeit', selectedProject as WorkType);
+      query = query.eq('arbeit', selectedProject);
     }
 
     const { data, error } = await query;
@@ -282,10 +282,9 @@ export default function AdminZeiterfassung() {
                   <SelectTrigger><SelectValue placeholder="Alle" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Alle</SelectItem>
-                    <SelectItem value="Loipenpräparation">Loipenpräparation</SelectItem>
-                    <SelectItem value="Aufbau">Aufbau</SelectItem>
-                    <SelectItem value="Abbau">Abbau</SelectItem>
-                    <SelectItem value="Verschiedenes">Verschiedenes</SelectItem>
+                    {tasks.map((t) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -322,16 +321,17 @@ export default function AdminZeiterfassung() {
                     <TableHead>Start</TableHead>
                     <TableHead>Stopp</TableHead>
                     <TableHead className="text-right">Stunden</TableHead>
+                    <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Laden...</TableCell>
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Laden...</TableCell>
                     </TableRow>
                   ) : entries.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Keine Einträge gefunden</TableCell>
+                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Keine Einträge gefunden</TableCell>
                     </TableRow>
                   ) : (
                     entries.map((entry) => (
@@ -342,6 +342,11 @@ export default function AdminZeiterfassung() {
                         <TableCell>{entry.start_zeit?.substring(0, 5) || '–'}</TableCell>
                         <TableCell>{entry.stopp_zeit?.substring(0, 5) || '–'}</TableCell>
                         <TableCell className="text-right font-medium">{entry.total_stunden?.toFixed(1) || '–'}</TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" aria-label="Bearbeiten" onClick={() => openEdit(entry)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -351,6 +356,50 @@ export default function AdminZeiterfassung() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Eintrag bearbeiten</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Datum</Label>
+              <Input type="date" value={editDatum} onChange={(e) => setEditDatum(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Projekt</Label>
+              <Select value={editArbeit} onValueChange={setEditArbeit}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Array.from(new Set([editArbeit, ...tasks])).filter(Boolean).map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {isManual ? (
+              <div className="space-y-2">
+                <Label>Stunden (HH:MM)</Label>
+                <Input placeholder="02:30" value={editDauer} onChange={(e) => setEditDauer(e.target.value)} />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Start</Label>
+                  <Input type="time" value={editStart} onChange={(e) => setEditStart(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Stopp</Label>
+                  <Input type="time" value={editStopp} onChange={(e) => setEditStopp(e.target.value)} />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>Abbrechen</Button>
+            <Button onClick={saveEdit} disabled={saving}>{saving ? 'Speichern...' : 'Speichern'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
