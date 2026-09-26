@@ -6,13 +6,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Fuel, Calendar } from 'lucide-react';
+import { Download, Fuel, Calendar, Pencil, Trash2 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { getSeasonDates, getSeasonLabel } from '@/lib/seasonUtils';
 import { useSeasons } from '@/hooks/useSeasons';
+
+type DieselTank = 'Tank Nidfurn' | 'Tank Hätzingen';
+const TANKS: DieselTank[] = ['Tank Nidfurn', 'Tank Hätzingen'];
 
 interface Profile {
   id: string;
@@ -25,7 +30,7 @@ interface DieselEntry {
   id: string;
   user_id: string;
   datum: string;
-  tank: string;
+  tank: DieselTank;
   liter: number;
   profiles?: Profile;
 }
@@ -37,13 +42,20 @@ export default function AdminDiesel() {
   const [entries, setEntries] = useState<DieselEntry[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
-  
+  const [saving, setSaving] = useState(false);
+
   const [filterType, setFilterType] = useState<FilterType>('month');
   const [selectedSeason, setSelectedSeason] = useState(() => getSeasonLabel(new Date()));
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [selectedUser, setSelectedUser] = useState<string>('all');
   const [selectedTank, setSelectedTank] = useState<string>('all');
+
+  // Edit dialog state
+  const [editing, setEditing] = useState<DieselEntry | null>(null);
+  const [editTank, setEditTank] = useState<DieselTank>('Tank Nidfurn');
+  const [editDate, setEditDate] = useState('');
+  const [editLiter, setEditLiter] = useState('');
 
   const { seasonLabels: availableSeasons } = useSeasons();
 
@@ -64,7 +76,7 @@ export default function AdminDiesel() {
       fromDate = seasonDates.start;
       toDate = seasonDates.end;
     }
-    
+
     const { data: profilesData } = await supabase.from('profiles').select('*');
     setProfiles(profilesData || []);
 
@@ -80,7 +92,7 @@ export default function AdminDiesel() {
     }
 
     if (selectedTank !== 'all') {
-      query = query.eq('tank', selectedTank as 'Tank Nidfurn' | 'Tank Hätzingen');
+      query = query.eq('tank', selectedTank as DieselTank);
     }
 
     const { data, error } = await query;
@@ -93,6 +105,7 @@ export default function AdminDiesel() {
 
     const entriesWithProfiles = (data || []).map(entry => ({
       ...entry,
+      tank: entry.tank as DieselTank,
       profiles: (profilesData || []).find(p => p.user_id === entry.user_id),
     }));
 
@@ -103,6 +116,47 @@ export default function AdminDiesel() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const openEdit = (entry: DieselEntry) => {
+    setEditing(entry);
+    setEditTank(entry.tank);
+    setEditDate(entry.datum);
+    setEditLiter(entry.liter.toString());
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const value = parseFloat(editLiter);
+    if (isNaN(value) || value <= 0) {
+      toast({ title: 'Fehler', description: 'Bitte gültige Literzahl eingeben', variant: 'destructive' });
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from('diesel_entries')
+      .update({ liter: value, tank: editTank, datum: editDate })
+      .eq('id', editing.id);
+    setSaving(false);
+    if (error) {
+      toast({ title: 'Fehler', description: 'Eintrag konnte nicht aktualisiert werden', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Aktualisiert', description: 'Diesel-Eintrag wurde geändert' });
+    setEditing(null);
+    fetchData();
+  };
+
+  const deleteEntry = async () => {
+    if (!editing) return;
+    const { error } = await supabase.from('diesel_entries').delete().eq('id', editing.id);
+    if (error) {
+      toast({ title: 'Fehler', description: 'Eintrag konnte nicht gelöscht werden', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Gelöscht', description: 'Diesel-Eintrag wurde entfernt' });
+    setEditing(null);
+    fetchData();
+  };
 
   const exportCSV = () => {
     if (entries.length === 0) {
@@ -210,7 +264,7 @@ export default function AdminDiesel() {
                 </div>
               </div>
             )}
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label className="text-xs">Mitarbeiter</Label>
@@ -230,8 +284,9 @@ export default function AdminDiesel() {
                   <SelectTrigger><SelectValue placeholder="Alle" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Alle</SelectItem>
-                    <SelectItem value="Tank Nidfurn">Tank Nidfurn</SelectItem>
-                    <SelectItem value="Tank Hätzingen">Tank Hätzingen</SelectItem>
+                    {TANKS.map((t) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -262,16 +317,17 @@ export default function AdminDiesel() {
                     <TableHead>Mitarbeiter</TableHead>
                     <TableHead>Tank</TableHead>
                     <TableHead className="text-right">Liter</TableHead>
+                    <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">Laden...</TableCell>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Laden...</TableCell>
                     </TableRow>
                   ) : entries.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">Keine Einträge gefunden</TableCell>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Keine Einträge gefunden</TableCell>
                     </TableRow>
                   ) : (
                     entries.map((entry) => (
@@ -280,6 +336,11 @@ export default function AdminDiesel() {
                         <TableCell>{entry.profiles ? `${entry.profiles.vorname} ${entry.profiles.nachname}` : 'Unbekannt'}</TableCell>
                         <TableCell>{entry.tank}</TableCell>
                         <TableCell className="text-right font-medium">{entry.liter} L</TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" aria-label="Bearbeiten" onClick={() => openEdit(entry)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -289,6 +350,53 @@ export default function AdminDiesel() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Eintrag bearbeiten</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label>Tank</Label>
+              <Select value={editTank} onValueChange={(v) => setEditTank(v as DieselTank)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TANKS.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Datum</Label>
+              <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Liter</Label>
+              <Input type="number" min="0" step="0.1" value={editLiter} onChange={(e) => setEditLiter(e.target.value)} />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setEditing(null)}>Abbrechen</Button>
+              <Button className="flex-1" onClick={saveEdit} disabled={saving}>{saving ? 'Speichern...' : 'Speichern'}</Button>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" className="w-full gap-2"><Trash2 className="h-4 w-4" /> Eintrag löschen</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Eintrag löschen?</AlertDialogTitle>
+                  <AlertDialogDescription>Dieser Eintrag wird unwiderruflich gelöscht.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                  <AlertDialogAction onClick={deleteEntry}>Löschen</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }

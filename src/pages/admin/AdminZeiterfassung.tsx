@@ -7,9 +7,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Clock, Calendar, Pencil } from 'lucide-react';
+import { Download, Clock, Calendar, Pencil, Trash2 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { getSeasonDates, getSeasonLabel } from '@/lib/seasonUtils';
@@ -110,6 +111,18 @@ export default function AdminZeiterfassung() {
       return;
     }
     toast({ title: 'Gespeichert', description: 'Eintrag wurde aktualisiert' });
+    setEditing(null);
+    fetchData();
+  };
+
+  const deleteEntry = async () => {
+    if (!editing) return;
+    const { error } = await supabase.from('time_entries').delete().eq('id', editing.id);
+    if (error) {
+      toast({ title: 'Fehler', description: 'Eintrag konnte nicht gelöscht werden', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Gelöscht', description: 'Eintrag wurde entfernt' });
     setEditing(null);
     fetchData();
   };
@@ -394,6 +407,21 @@ export default function AdminZeiterfassung() {
               </div>
             )}
           </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" className="w-full gap-2"><Trash2 className="h-4 w-4" /> Eintrag löschen</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Eintrag löschen?</AlertDialogTitle>
+                <AlertDialogDescription>Dieser Eintrag wird unwiderruflich gelöscht.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                <AlertDialogAction onClick={deleteEntry}>Löschen</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>Abbrechen</Button>
             <Button onClick={saveEdit} disabled={saving}>{saving ? 'Speichern...' : 'Speichern'}</Button>
