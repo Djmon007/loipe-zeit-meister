@@ -9,7 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Filter, MapPin } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Download, Filter, MapPin, Trash2 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { getSeasonDates } from '@/lib/seasonUtils';
@@ -189,6 +190,20 @@ export default function AdminLoipen() {
     toast({ title: 'Export erfolgreich', description: 'CSV-Datei wurde heruntergeladen' });
   };
 
+  const deleteProtokoll = async (userId: string, datum: string) => {
+    const { error } = await supabase
+      .from('loipen_protokoll_entries')
+      .delete()
+      .eq('user_id', userId)
+      .eq('datum', datum);
+    if (error) {
+      toast({ title: 'Fehler', description: 'Eintrag konnte nicht gelöscht werden', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Gelöscht', description: 'Protokoll wurde entfernt' });
+    fetchData();
+  };
+
   return (
     <AdminLayout title="Loipen-Protokoll">
       <div className="space-y-6">
@@ -267,16 +282,17 @@ export default function AdminLoipen() {
                         {loipe.name}
                       </TableHead>
                     ))}
+                    <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={3 + loipenConfig.length} className="text-center py-8 text-muted-foreground">Laden...</TableCell>
+                      <TableCell colSpan={4 + loipenConfig.length} className="text-center py-8 text-muted-foreground">Laden...</TableCell>
                     </TableRow>
                   ) : rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3 + loipenConfig.length} className="text-center py-8 text-muted-foreground">Keine Einträge gefunden</TableCell>
+                      <TableCell colSpan={4 + loipenConfig.length} className="text-center py-8 text-muted-foreground">Keine Einträge gefunden</TableCell>
                     </TableRow>
                   ) : (
                     rows.map((row, idx) => (
@@ -296,6 +312,25 @@ export default function AdminLoipen() {
                             </TableCell>
                           );
                         })}
+                        <TableCell>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" aria-label="Löschen">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Eintrag löschen?</AlertDialogTitle>
+                                <AlertDialogDescription>Dieses Protokoll wird unwiderruflich gelöscht.</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => deleteProtokoll(row.user_id, row.datum)}>Löschen</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}

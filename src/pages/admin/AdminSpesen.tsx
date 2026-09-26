@@ -4,11 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Receipt, ExternalLink, Calendar } from 'lucide-react';
+import { Download, Receipt, ExternalLink, Calendar, Pencil, Trash2 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { getSeasonDates, getSeasonLabel } from '@/lib/seasonUtils';
@@ -39,12 +42,19 @@ export default function AdminSpesen() {
   const [entries, setEntries] = useState<Expense[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
-  
+  const [saving, setSaving] = useState(false);
+
   const [filterType, setFilterType] = useState<FilterType>('month');
   const [selectedSeason, setSelectedSeason] = useState(() => getSeasonLabel(new Date()));
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [selectedUser, setSelectedUser] = useState<string>('all');
+
+  // Edit dialog state
+  const [editing, setEditing] = useState<Expense | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editBetrag, setEditBetrag] = useState('');
+  const [editBeschreibung, setEditBeschreibung] = useState('');
 
   const { seasonLabels: availableSeasons } = useSeasons();
 
@@ -65,7 +75,7 @@ export default function AdminSpesen() {
       fromDate = seasonDates.start;
       toDate = seasonDates.end;
     }
-    
+
     const { data: profilesData } = await supabase.from('profiles').select('*');
     setProfiles(profilesData || []);
 
@@ -100,6 +110,46 @@ export default function AdminSpesen() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const openEdit = (entry: Expense) => {
+    setEditing(entry);
+    setEditDate(entry.datum);
+    setEditBetrag(entry.betrag !== null ? entry.betrag.toString() : '');
+    setEditBeschreibung(entry.beschreibung || '');
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from('expenses')
+      .update({
+        betrag: editBetrag ? parseFloat(editBetrag) : null,
+        beschreibung: editBeschreibung || null,
+        datum: editDate,
+      })
+      .eq('id', editing.id);
+    setSaving(false);
+    if (error) {
+      toast({ title: 'Fehler', description: 'Eintrag konnte nicht aktualisiert werden', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Aktualisiert', description: 'Spesen-Eintrag wurde geändert' });
+    setEditing(null);
+    fetchData();
+  };
+
+  const deleteEntry = async () => {
+    if (!editing) return;
+    const { error } = await supabase.from('expenses').delete().eq('id', editing.id);
+    if (error) {
+      toast({ title: 'Fehler', description: 'Eintrag konnte nicht gelöscht werden', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Gelöscht', description: 'Spesen-Eintrag wurde entfernt' });
+    setEditing(null);
+    fetchData();
+  };
 
   const exportCSV = () => {
     if (entries.length === 0) {
@@ -190,7 +240,7 @@ export default function AdminSpesen() {
                 </div>
               </div>
             )}
-            
+
             <div className="space-y-1">
               <Label className="text-xs">Mitarbeiter</Label>
               <Select value={selectedUser} onValueChange={setSelectedUser}>
@@ -232,16 +282,17 @@ export default function AdminSpesen() {
                     <TableHead className="text-right">Betrag</TableHead>
                     <TableHead>Beschreibung</TableHead>
                     <TableHead>Beleg</TableHead>
+                    <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Laden...</TableCell>
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Laden...</TableCell>
                     </TableRow>
                   ) : entries.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Keine Einträge gefunden</TableCell>
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Keine Einträge gefunden</TableCell>
                     </TableRow>
                   ) : (
                     entries.map((entry) => (
@@ -260,6 +311,11 @@ export default function AdminSpesen() {
                             </Button>
                           ) : '–'}
                         </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" aria-label="Bearbeiten" onClick={() => openEdit(entry)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -269,6 +325,46 @@ export default function AdminSpesen() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Eintrag bearbeiten</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label>Datum</Label>
+              <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Betrag (CHF)</Label>
+              <Input type="number" step="0.05" min="0" value={editBetrag} onChange={(e) => setEditBetrag(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Beschreibung</Label>
+              <Textarea value={editBeschreibung} onChange={(e) => setEditBeschreibung(e.target.value)} className="resize-none" rows={2} />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setEditing(null)}>Abbrechen</Button>
+              <Button className="flex-1" onClick={saveEdit} disabled={saving}>{saving ? 'Speichern...' : 'Speichern'}</Button>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" className="w-full gap-2"><Trash2 className="h-4 w-4" /> Eintrag löschen</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Eintrag löschen?</AlertDialogTitle>
+                  <AlertDialogDescription>Dieser Eintrag wird unwiderruflich gelöscht.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                  <AlertDialogAction onClick={deleteEntry}>Löschen</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
