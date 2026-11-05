@@ -140,6 +140,23 @@ export default function Auth() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    const result = await lovable.auth.signInWithOAuth('google', {
+      redirect_uri: window.location.origin,
+    });
+
+    if (result.error) {
+      toast({
+        title: 'Fehler',
+        description: 'Google-Anmeldung fehlgeschlagen',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Bei Weiterleitung zu Google übernimmt der Browser die Anmeldung.
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <Card className="w-full max-w-md">
