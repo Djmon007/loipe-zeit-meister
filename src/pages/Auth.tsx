@@ -216,6 +216,15 @@ export default function Auth() {
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Anmelden
                 </Button>
+                <div className="flex items-center gap-3 py-2">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-xs text-muted-foreground">oder</span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+                <Button type="button" variant="outline" className="w-full" onClick={handleGoogleSignIn}>
+                  <GoogleIcon />
+                  Mit Google anmelden
+                </Button>
               </form>
             </TabsContent>
 
