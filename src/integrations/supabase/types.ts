@@ -386,6 +386,30 @@ export type Database = {
         }
         Relationships: []
       }
+      vehicle_hours_entries: {
+        Row: {
+          betriebsstunden: number
+          created_at: string
+          datum: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          betriebsstunden: number
+          created_at?: string
+          datum?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          betriebsstunden?: number
+          created_at?: string
+          datum?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
