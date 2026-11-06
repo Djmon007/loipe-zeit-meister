@@ -15,6 +15,20 @@
       "when": 1790388024582,
       "tag": "0001_add_admin_delete_update_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793940653378,
+      "tag": "0002_add_vehicle_hours_entries_and_admin_profile_edit",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793940689583,
+      "tag": "0003_secure_vehicle_hours_latest_reading",
+      "breakpoints": true
     }
   ]
 }
