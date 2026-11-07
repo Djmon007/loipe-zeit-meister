@@ -102,7 +102,8 @@ function AuthRoute({ children }: { children: React.ReactNode }) {
 function EntryRoute() {
   const location = useLocation();
   const authType = new URLSearchParams(location.hash.slice(1)).get('type');
-  if (authType === 'recovery' || authType === 'invite') {
+  const query = new URLSearchParams(location.search);
+  if (authType === 'recovery' || authType === 'invite' || query.has('code') || query.get('type') === 'recovery' || query.get('type') === 'invite') {
     return <Navigate to={{ pathname: '/passwort-setzen', hash: location.hash }} replace />;
   }
   return <Navigate to="/zeiterfassung" replace />;

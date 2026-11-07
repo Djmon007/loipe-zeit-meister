@@ -8,11 +8,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { parseVehicleHours } from '@/lib/vehicleHours';
+import { isVehicleHoursNondecreasing, parseVehicleHours } from '@/lib/vehicleHours';
 import { format, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { Gauge, Loader2 } from 'lucide-react';
-import { useCallback as useCallbackEffect } from 'react';
 
 interface VehicleEntry {
   id: string;
@@ -63,7 +62,7 @@ export default function Fahrzeugstunden() {
       toast({ title: 'Ungültiger Zählerstand', description: 'Bitte eine gültige Zahl ab null eingeben.', variant: 'destructive' });
       return;
     }
-    if (current && hours < current.betriebsstunden) {
+    if (!isVehicleHoursNondecreasing(current?.betriebsstunden ?? null, hours)) {
       toast({ title: 'Zählerstand zu niedrig', description: `Der letzte bekannte Stand beträgt ${current.betriebsstunden.toFixed(1)} h.`, variant: 'destructive' });
       return;
     }
