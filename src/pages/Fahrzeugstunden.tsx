@@ -1,0 +1,128 @@
+import { useCallback, useEffect, useState } from 'react';
+import { AppLayout } from '@/components/layout/AppLayout';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { isVehicleHoursNondecreasing, parseVehicleHours } from '@/lib/vehicleHours';
+import { format, parseISO } from 'date-fns';
+import { de } from 'date-fns/locale';
+import { Gauge, Loader2 } from 'lucide-react';
+
+interface VehicleEntry {
+  id: string;
+  datum: string;
+  betriebsstunden: number;
+}
+
+interface CurrentReading {
+  datum: string;
+  betriebsstunden: number;
+}
+
+export default function Fahrzeugstunden() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [datum, setDatum] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [reading, setReading] = useState('');
+  const [current, setCurrent] = useState<CurrentReading | null>(null);
+  const [entries, setEntries] = useState<VehicleEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const fetchEntries = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    const [{ data, error }, { data: currentData }] = await Promise.all([
+      supabase.from('vehicle_hours_entries').select('id, datum, betriebsstunden').eq('user_id', user.id).order('datum', { ascending: false }).order('created_at', { ascending: false }).limit(15),
+      supabase.rpc('get_current_vehicle_hours'),
+    ]);
+    if (error) {
+      toast({ title: 'Einträge nicht geladen', description: 'Bitte laden Sie die Seite erneut.', variant: 'destructive' });
+    } else {
+      setEntries((data || []) as VehicleEntry[]);
+    }
+    const latest = currentData?.[0];
+    setCurrent(latest ? { datum: latest.datum, betriebsstunden: Number(latest.betriebsstunden) } : null);
+    setLoading(false);
+  }, [user, toast]);
+
+  useEffect(() => {
+    fetchEntries();
+  }, [fetchEntries]);
+
+  const addEntry = async () => {
+    if (!user) return;
+    const hours = parseVehicleHours(reading);
+    if (hours === null) {
+      toast({ title: 'Ungültiger Zählerstand', description: 'Bitte eine gültige Zahl ab null eingeben.', variant: 'destructive' });
+      return;
+    }
+    if (!isVehicleHoursNondecreasing(current?.betriebsstunden ?? null, hours)) {
+      toast({ title: 'Zählerstand zu niedrig', description: `Der letzte bekannte Stand beträgt ${current.betriebsstunden.toFixed(1)} h.`, variant: 'destructive' });
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase.from('vehicle_hours_entries').insert({
+      user_id: user.id,
+      datum,
+      betriebsstunden: hours,
+    });
+    setSaving(false);
+    if (error) {
+      toast({ title: 'Eintrag nicht gespeichert', description: 'Bitte versuchen Sie es erneut.', variant: 'destructive' });
+      return;
+    }
+    setReading('');
+    toast({ title: 'Gespeichert', description: 'Fahrzeugstunden wurden eingetragen.' });
+    await fetchEntries();
+  };
+
+  return (
+    <AppLayout title="Fahrzeugstunden">
+      <div className="mx-auto max-w-3xl space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg"><Gauge className="h-5 w-5 text-primary" /> Fahrzeugstunden</CardTitle>
+            <CardDescription>Den abgelesenen Zählerstand nach jeder Nutzung eintragen.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="rounded-lg bg-muted p-4">
+              <p className="text-sm text-muted-foreground">Fahrzeugstunden aktuell</p>
+              <p className="text-3xl font-semibold">{current ? `${current.betriebsstunden.toFixed(1)} h` : 'Noch kein Eintrag'}</p>
+              {current && <p className="mt-1 text-xs text-muted-foreground">Stand vom {format(parseISO(current.datum), 'dd.MM.yyyy', { locale: de })}</p>}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label htmlFor="vehicle-date">Datum</Label><Input id="vehicle-date" type="date" value={datum} onChange={(event) => setDatum(event.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="vehicle-hours">Fahrzeugstunden</Label><Input id="vehicle-hours" type="number" min="0" step="0.1" inputMode="decimal" placeholder="z. B. 1042,2" value={reading} onChange={(event) => setReading(event.target.value)} /></div>
+            </div>
+            <Button onClick={addEntry} disabled={saving} className="w-full">
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Eintrag hinzufügen
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">Meine letzten Einträge</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader><TableRow><TableHead>Datum</TableHead><TableHead className="text-right">Zählerstand</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {loading ? <TableRow><TableCell colSpan={2} className="py-8 text-center text-muted-foreground">Laden...</TableCell></TableRow>
+                    : entries.length === 0 ? <TableRow><TableCell colSpan={2} className="py-8 text-center text-muted-foreground">Noch keine Einträge</TableCell></TableRow>
+                      : entries.map((entry) => <TableRow key={entry.id}><TableCell>{format(parseISO(entry.datum), 'dd.MM.yyyy', { locale: de })}</TableCell><TableCell className="text-right font-medium">{Number(entry.betriebsstunden).toFixed(1)} h</TableCell></TableRow>)}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </AppLayout>
+  );
+}

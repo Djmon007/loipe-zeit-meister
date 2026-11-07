@@ -20,6 +20,7 @@ import {
   ListTodo,
   Settings,
   CalendarRange,
+  Gauge,
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
@@ -39,6 +40,7 @@ const navItems = [
   { href: '/admin/aufgaben', icon: ListTodo, label: 'Aufgaben' },
   { href: '/admin/loipen-config', icon: Settings, label: 'Loipen-Konfiguration' },
   { href: '/admin/saisons', icon: CalendarRange, label: 'Saisons' },
+  { href: '/admin/fahrzeugstunden', icon: Gauge, label: 'Fahrzeugstunden' },
 ];
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {

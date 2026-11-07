@@ -1,4 +1,4 @@
-import { Clock, MapPin, Fuel, Receipt, LayoutDashboard, Banknote } from 'lucide-react';
+import { Clock, MapPin, Fuel, Receipt, LayoutDashboard, Banknote, Gauge } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -9,6 +9,7 @@ const workerNavItems = [
   { to: '/diesel', icon: Fuel, label: 'Diesel' },
   { to: '/spesen', icon: Receipt, label: 'Spesen' },
   { to: '/kasse', icon: Banknote, label: 'Kasse' },
+  { to: '/fahrzeugstunden', icon: Gauge, label: 'Fahrzeug' },
 ];
 
 const adminNavItems = [

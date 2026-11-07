@@ -25,6 +25,11 @@ import AdminKasse from "./pages/admin/AdminKasse";
 import AdminAufgaben from "./pages/admin/AdminAufgaben";
 import AdminLoipenConfig from "./pages/admin/AdminLoipenConfig";
 import AdminSaisons from "./pages/admin/AdminSaisons";
+import Fahrzeugstunden from "./pages/Fahrzeugstunden";
+import AdminFahrzeugstunden from "./pages/admin/AdminFahrzeugstunden";
+import Profil from "./pages/Profil";
+import PasswortSetzen from "./pages/PasswortSetzen";
+import { useLocation } from "react-router-dom";
 
 const queryClient = new QueryClient();
 
@@ -73,6 +78,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 // Auth route - redirect if already logged in
 function AuthRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -83,17 +89,31 @@ function AuthRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (user) {
+    const authType = new URLSearchParams(location.hash.slice(1)).get('type');
+    if (authType === 'recovery' || authType === 'invite') {
+      return <Navigate to={{ pathname: '/passwort-setzen', hash: location.hash }} replace />;
+    }
     return <Navigate to="/zeiterfassung" replace />;
   }
 
   return <>{children}</>;
 }
 
+function EntryRoute() {
+  const location = useLocation();
+  const authType = new URLSearchParams(location.hash.slice(1)).get('type');
+  const query = new URLSearchParams(location.search);
+  if (authType === 'recovery' || authType === 'invite' || query.has('code') || query.get('type') === 'recovery' || query.get('type') === 'invite') {
+    return <Navigate to={{ pathname: '/passwort-setzen', hash: location.hash }} replace />;
+  }
+  return <Navigate to="/zeiterfassung" replace />;
+}
+
 function AppRoutes() {
   return (
     <Routes>
       {/* Redirect root to zeiterfassung or auth */}
-      <Route path="/" element={<Navigate to="/zeiterfassung" replace />} />
+      <Route path="/" element={<EntryRoute />} />
       
       {/* Auth */}
       <Route
@@ -104,6 +124,7 @@ function AppRoutes() {
           </AuthRoute>
         }
       />
+      <Route path="/passwort-setzen" element={<PasswortSetzen />} />
 
       {/* Worker app routes */}
       <Route
@@ -146,6 +167,8 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route path="/fahrzeugstunden" element={<ProtectedRoute><Fahrzeugstunden /></ProtectedRoute>} />
+      <Route path="/profil" element={<ProtectedRoute><Profil /></ProtectedRoute>} />
 
       {/* Admin Panel routes */}
       <Route
@@ -228,6 +251,7 @@ function AppRoutes() {
           </AdminRoute>
         }
       />
+      <Route path="/admin/fahrzeugstunden" element={<AdminRoute><AdminFahrzeugstunden /></AdminRoute>} />
 
       {/* 404 */}
       <Route path="*" element={<NotFound />} />

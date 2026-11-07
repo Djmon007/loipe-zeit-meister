@@ -2,8 +2,9 @@ import { ReactNode } from 'react';
 import { BottomNav } from './BottomNav';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { LogOut } from 'lucide-react';
+import { LogOut, UserRound } from 'lucide-react';
 import logo from '@/assets/logo.png';
+import { Link } from 'react-router-dom';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -25,6 +26,9 @@ export function AppLayout({ children, title }: AppLayoutProps) {
             <h1 className="text-lg font-semibold text-foreground">{title}</h1>
           </div>
           <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" size="icon" className="h-9 w-9" aria-label="Profil">
+              <Link to="/profil"><UserRound className="h-4 w-4" /></Link>
+            </Button>
             {profile && (
               <span className="text-sm text-muted-foreground hidden sm:block">
                 {profile.vorname} {profile.nachname}

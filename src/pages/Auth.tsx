@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import logo from '@/assets/logo.png';
+import { supabase } from '@/integrations/supabase/client';
 
 const loginSchema = z.object({
   email: z.string().email('Ungültige E-Mail-Adresse'),
@@ -130,6 +131,21 @@ export default function Auth() {
     }
   };
 
+  const sendPasswordReset = async () => {
+    if (!z.string().email().safeParse(loginEmail).success) {
+      setErrors({ login_email: 'Bitte zuerst eine gültige E-Mail-Adresse eingeben' });
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(loginEmail, {
+      redirectTo: `${window.location.origin}/passwort-setzen`,
+    });
+    setLoading(false);
+    toast(error
+      ? { title: 'Fehler', description: 'E-Mail zum Zurücksetzen konnte nicht gesendet werden', variant: 'destructive' }
+      : { title: 'E-Mail gesendet', description: 'Bitte öffnen Sie den Link in Ihrem Postfach, um ein neues Passwort festzulegen.' });
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <Card className="w-full max-w-md">
@@ -184,6 +200,11 @@ export default function Auth() {
                   {errors.login_password && (
                     <p className="text-sm text-destructive">{errors.login_password}</p>
                   )}
+                </div>
+                <div className="flex justify-end">
+                  <Button type="button" variant="link" className="h-auto px-0" onClick={sendPasswordReset} disabled={loading}>
+                    Passwort vergessen?
+                  </Button>
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

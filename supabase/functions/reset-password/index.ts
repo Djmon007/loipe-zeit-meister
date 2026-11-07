@@ -66,7 +66,7 @@ serve(async (req) => {
 
     // Send password reset email
     const { error } = await adminClient.auth.resetPasswordForEmail(targetUser.user.email, {
-      redirectTo: `${req.headers.get("origin") || supabaseUrl}/auth`,
+      redirectTo: `${req.headers.get("origin") || supabaseUrl}/passwort-setzen`,
     });
 
     if (error) {

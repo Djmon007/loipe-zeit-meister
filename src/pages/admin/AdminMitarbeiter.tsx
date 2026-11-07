@@ -95,13 +95,15 @@ export default function AdminMitarbeiter() {
     if (!editingWorker) return;
 
     // Update profile
-    const { error: profileError } = await supabase
+    const { data: updatedProfile, error: profileError } = await supabase
       .from('profiles')
       .update({ vorname: editVorname, nachname: editNachname })
-      .eq('user_id', editingWorker.profile.user_id);
+      .eq('user_id', editingWorker.profile.user_id)
+      .select('user_id')
+      .maybeSingle();
 
-    if (profileError) {
-      toast({ title: 'Fehler', description: 'Profil konnte nicht aktualisiert werden', variant: 'destructive' });
+    if (profileError || !updatedProfile) {
+      toast({ title: 'Fehler', description: 'Profil konnte nicht gespeichert werden. Bitte Berechtigung prüfen und erneut versuchen.', variant: 'destructive' });
       return;
     }
 
@@ -120,7 +122,7 @@ export default function AdminMitarbeiter() {
 
     setEditDialogOpen(false);
     setEditingWorker(null);
-    fetchData();
+    await fetchData();
     toast({ title: 'Aktualisiert', description: 'Mitarbeiter wurde geändert' });
   };
 
