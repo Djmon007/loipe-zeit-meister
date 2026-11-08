@@ -92,7 +92,7 @@ export default function AdminFahrzeugstunden() {
       return [format(parseISO(entry.datum), 'dd.MM.yyyy'), fullName, Number(entry.betriebsstunden).toFixed(1)];
     });
     const content = [['Datum', 'Mitarbeiter', 'Fahrzeugstunden'], ...rows]
-      .map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(';')).join('\n');
+      .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(';')).join('\n');
     const url = URL.createObjectURL(new Blob(['\ufeff' + content], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a');
     anchor.href = url;
