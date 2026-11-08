@@ -18,6 +18,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, vorname: string, nachname: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -74,6 +75,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!error && data) {
       setProfile(data as Profile);
     }
+  };
+
+  const refreshProfile = async () => {
+    if (!user) return;
+    await fetchProfile(user.id);
   };
 
   const checkAdminRole = async (userId: string) => {
@@ -136,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signIn,
       signOut,
+      refreshProfile,
     }}>
       {children}
     </AuthContext.Provider>
