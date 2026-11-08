@@ -90,8 +90,9 @@ function AuthRoute({ children }: { children: React.ReactNode }) {
 
   if (user) {
     const authType = new URLSearchParams(location.hash.slice(1)).get('type');
-    if (authType === 'recovery' || authType === 'invite') {
-      return <Navigate to={{ pathname: '/passwort-setzen', hash: location.hash }} replace />;
+    const query = new URLSearchParams(location.search);
+    if (authType === 'recovery' || authType === 'invite' || query.has('code') || query.get('type') === 'recovery' || query.get('type') === 'invite') {
+      return <Navigate to={{ pathname: '/passwort-setzen', search: location.search, hash: location.hash }} replace />;
     }
     return <Navigate to="/zeiterfassung" replace />;
   }
@@ -104,7 +105,7 @@ function EntryRoute() {
   const authType = new URLSearchParams(location.hash.slice(1)).get('type');
   const query = new URLSearchParams(location.search);
   if (authType === 'recovery' || authType === 'invite' || query.has('code') || query.get('type') === 'recovery' || query.get('type') === 'invite') {
-    return <Navigate to={{ pathname: '/passwort-setzen', hash: location.hash }} replace />;
+    return <Navigate to={{ pathname: '/passwort-setzen', search: location.search, hash: location.hash }} replace />;
   }
   return <Navigate to="/zeiterfassung" replace />;
 }

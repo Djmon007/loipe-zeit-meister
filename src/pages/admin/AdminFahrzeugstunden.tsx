@@ -39,6 +39,7 @@ export default function AdminFahrzeugstunden() {
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [loading, setLoading] = useState(true);
+  const [currentReading, setCurrentReading] = useState<{ datum: string; betriebsstunden: number } | null>(null);
   const { seasonLabels } = useSeasons();
 
   const fetchData = useCallback(async () => {
@@ -57,11 +58,12 @@ export default function AdminFahrzeugstunden() {
       toDate = seasonDates.end;
     }
 
-    const [{ data: people, error: peopleError }, { data, error }] = await Promise.all([
+    const [{ data: people, error: peopleError }, { data, error }, { data: readingData }] = await Promise.all([
       supabase.from('profiles').select('user_id, vorname, nachname').order('nachname'),
       supabase.from('vehicle_hours_entries').select('id, user_id, datum, betriebsstunden')
         .gte('datum', fromDate).lte('datum', toDate)
         .order('datum', { ascending: false }).order('created_at', { ascending: false }),
+      supabase.rpc('get_current_vehicle_hours'),
     ]);
     if (peopleError || error) {
       toast({ title: 'Daten nicht geladen', description: 'Bitte versuchen Sie es erneut.', variant: 'destructive' });
@@ -69,6 +71,8 @@ export default function AdminFahrzeugstunden() {
       return;
     }
     setProfiles((people || []) as Profile[]);
+    const latestReading = readingData?.[0];
+    setCurrentReading(latestReading ? { datum: latestReading.datum, betriebsstunden: Number(latestReading.betriebsstunden) } : null);
     const profileByUser = new Map((people || []).map((profile) => [profile.user_id, profile]));
     const filtered = (data || []) as VehicleHoursEntry[];
     setEntries(filtered.filter((entry) => selectedUser === 'all' || entry.user_id === selectedUser)
@@ -100,8 +104,6 @@ export default function AdminFahrzeugstunden() {
     anchor.click();
     URL.revokeObjectURL(url);
   };
-
-  const lastEntry = entries[0];
 
   return (
     <AdminLayout title="Fahrzeugstunden">
@@ -138,7 +140,7 @@ export default function AdminFahrzeugstunden() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm text-muted-foreground">{entries.length} Einträge</p>
-            {lastEntry && <p className="text-sm">Letzter Stand: <span className="font-semibold">{Number(lastEntry.betriebsstunden).toFixed(1)} h</span></p>}
+            {currentReading && <p className="text-sm">Fahrzeugstunden aktuell: <span className="font-semibold">{currentReading.betriebsstunden.toFixed(1)} h</span> · Stand vom {format(parseISO(currentReading.datum), 'dd.MM.yyyy')}</p>}
           </div>
           <Button variant="outline" onClick={exportCSV} className="gap-2"><Download className="h-4 w-4" /> CSV Export</Button>
         </div>
