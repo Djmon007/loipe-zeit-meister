@@ -29,6 +29,13 @@
       "when": 1793940689583,
       "tag": "0003_secure_vehicle_hours_latest_reading",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794131278821,
+      "tag": "0004_grant_profile_updates_for_admin_and_users",
+      "breakpoints": true
     }
   ]
 }
