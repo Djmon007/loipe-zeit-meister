@@ -31,58 +31,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        // Defer profile and role fetching
-        if (session?.user) {
-          setTimeout(() => {
-            fetchProfile(session.user.id);
-            checkAdminRole(session.user.id);
-          }, 0);
-        } else {
-          setProfile(null);
-          setIsAdmin(false);
-        }
-      }
-    );
+    let alive = true;
+    let authRequest = 0;
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const hydrateSession = async (session: Session | null) => {
+      const currentRequest = ++authRequest;
       setSession(session);
       setUser(session?.user ?? null);
-      
+
       if (session?.user) {
-        fetchProfile(session.user.id);
-        checkAdminRole(session.user.id);
+        setLoading(true);
+        const [nextProfile, nextIsAdmin] = await Promise.all([
+          fetchProfile(session.user.id),
+          checkAdminRole(session.user.id),
+        ]);
+        if (alive && currentRequest === authRequest) {
+          setProfile(nextProfile);
+          setIsAdmin(nextIsAdmin);
+          setLoading(false);
+        }
+      } else if (alive && currentRequest === authRequest) {
+        setProfile(null);
+        setIsAdmin(false);
+        setLoading(false);
       }
-      setLoading(false);
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // Defer database requests outside the auth callback to avoid lock contention.
+      window.setTimeout(() => { void hydrateSession(session); }, 0);
     });
 
-    return () => subscription.unsubscribe();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      void hydrateSession(session);
+    });
+
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string): Promise<Profile | null> => {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('user_id', userId)
       .single();
     
-    if (!error && data) {
-      setProfile(data as Profile);
-    }
+    return !error && data ? data as Profile : null;
   };
 
   const refreshProfile = async () => {
     if (!user) return;
-    await fetchProfile(user.id);
+    setProfile(await fetchProfile(user.id));
   };
 
-  const checkAdminRole = async (userId: string) => {
+  const checkAdminRole = async (userId: string): Promise<boolean> => {
     const { data, error } = await supabase
       .from('user_roles')
       .select('role')
@@ -90,11 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('role', 'admin')
       .single();
     
-    if (!error && data) {
-      setIsAdmin(true);
-    } else {
-      setIsAdmin(false);
-    }
+    return !error && Boolean(data);
   };
 
   const signUp = async (email: string, password: string, vorname: string, nachname: string) => {
