@@ -98,7 +98,7 @@ export default function Fahrzeugstunden() {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2"><Label htmlFor="vehicle-date">Datum</Label><Input id="vehicle-date" type="date" value={datum} onChange={(event) => setDatum(event.target.value)} /></div>
-              <div className="space-y-2"><Label htmlFor="vehicle-hours">Fahrzeugstunden</Label><Input id="vehicle-hours" type="number" min="0" step="0.1" inputMode="decimal" placeholder="z. B. 1042,2" value={reading} onChange={(event) => setReading(event.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="vehicle-hours">Fahrzeugstunden</Label><Input id="vehicle-hours" type="text" inputMode="decimal" placeholder="z. B. 1042,2" value={reading} onChange={(event) => setReading(event.target.value)} /></div>
             </div>
             <Button onClick={addEntry} disabled={saving} className="w-full">
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
