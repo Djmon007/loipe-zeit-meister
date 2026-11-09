@@ -5,13 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { isVehicleHoursNondecreasing, parseVehicleHours } from '@/lib/vehicleHours';
 import { format, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { Gauge, Loader2 } from 'lucide-react';
+import { Gauge, Loader2, Pencil } from 'lucide-react';
 
 interface VehicleEntry {
   id: string;
@@ -33,6 +34,9 @@ export default function Fahrzeugstunden() {
   const [entries, setEntries] = useState<VehicleEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<VehicleEntry | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editReading, setEditReading] = useState('');
 
   const fetchEntries = useCallback(async () => {
     if (!user) return;
@@ -82,6 +86,35 @@ export default function Fahrzeugstunden() {
     await fetchEntries();
   };
 
+  const openEditDialog = (entry: VehicleEntry) => {
+    setEditingEntry(entry);
+    setEditDate(entry.datum);
+    setEditReading(String(entry.betriebsstunden).replace('.', ','));
+  };
+
+  const saveEdit = async () => {
+    if (!editingEntry || !user) return;
+    const hours = parseVehicleHours(editReading);
+    if (hours === null) {
+      toast({ title: 'Ungültiger Zählerstand', description: 'Bitte eine gültige Zahl ab null eingeben.', variant: 'destructive' });
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from('vehicle_hours_entries')
+      .update({ datum: editDate, betriebsstunden: hours })
+      .eq('id', editingEntry.id)
+      .eq('user_id', user.id);
+    setSaving(false);
+    if (error) {
+      toast({ title: 'Eintrag nicht aktualisiert', description: 'Bitte versuchen Sie es erneut.', variant: 'destructive' });
+      return;
+    }
+    setEditingEntry(null);
+    toast({ title: 'Aktualisiert', description: 'Fahrzeugstunden wurden geändert.' });
+    await fetchEntries();
+  };
+
   return (
     <AppLayout title="Fahrzeugstunden">
       <div className="mx-auto max-w-3xl space-y-6">
@@ -112,17 +145,42 @@ export default function Fahrzeugstunden() {
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader><TableRow><TableHead>Datum</TableHead><TableHead className="text-right">Zählerstand</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Datum</TableHead><TableHead>Name</TableHead><TableHead className="text-right">Zählerstand</TableHead><TableHead className="w-12"><span className="sr-only">Aktionen</span></TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {loading ? <TableRow><TableCell colSpan={2} className="py-8 text-center text-muted-foreground">Laden...</TableCell></TableRow>
-                    : entries.length === 0 ? <TableRow><TableCell colSpan={2} className="py-8 text-center text-muted-foreground">Noch keine Einträge</TableCell></TableRow>
-                      : entries.map((entry) => <TableRow key={entry.id}><TableCell>{format(parseISO(entry.datum), 'dd.MM.yyyy', { locale: de })}</TableCell><TableCell className="text-right font-medium">{Number(entry.betriebsstunden).toFixed(1)} h</TableCell></TableRow>)}
+                  {loading ? <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">Laden...</TableCell></TableRow>
+                    : entries.length === 0 ? <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">Noch keine Einträge</TableCell></TableRow>
+                      : entries.map((entry) => <TableRow key={entry.id}>
+                        <TableCell>{format(parseISO(entry.datum), 'dd.MM.yyyy', { locale: de })}</TableCell>
+                        <TableCell>{[profile?.vorname, profile?.nachname].filter(Boolean).join(' ') || user?.email || '—'}</TableCell>
+                        <TableCell className="text-right font-medium">{Number(entry.betriebsstunden).toFixed(1)} h</TableCell>
+                        <TableCell>
+                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(entry)} aria-label="Eintrag bearbeiten" title="Eintrag bearbeiten">
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>)}
                 </TableBody>
               </Table>
             </div>
           </CardContent>
         </Card>
       </div>
+      <Dialog open={Boolean(editingEntry)} onOpenChange={(open) => { if (!open && !saving) setEditingEntry(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Fahrzeugstunden bearbeiten</DialogTitle></DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2"><Label htmlFor="edit-vehicle-date">Datum</Label><Input id="edit-vehicle-date" type="date" value={editDate} onChange={(event) => setEditDate(event.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="edit-vehicle-hours">Zählerstand</Label><Input id="edit-vehicle-hours" type="text" inputMode="decimal" value={editReading} onChange={(event) => setEditReading(event.target.value)} /></div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditingEntry(null)} disabled={saving}>Abbrechen</Button>
+            <Button type="button" onClick={saveEdit} disabled={saving || !editDate}>
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              Speichern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
