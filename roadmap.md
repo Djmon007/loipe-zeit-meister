@@ -12,3 +12,5 @@
 - [x] Fahrzeugstunden mit persönlichem Eintrag und aktuellem Zählerstand ergänzen
 - [x] Admin-Übersicht Fahrzeugstunden mit Filtern und CSV-Export ergänzen
 - [x] Fahrzeugstunden-Routen, Profiländerungen und Berechtigungen prüfen
+- [x] Bearbeiten-Symbol für eigene Fahrzeugstunden-Einträge ergänzen
+- [x] Namen der angemeldeten Person in der Fahrzeugstunden-Liste anzeigen
