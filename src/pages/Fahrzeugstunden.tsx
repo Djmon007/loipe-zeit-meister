@@ -26,7 +26,7 @@ interface CurrentReading {
 }
 
 export default function Fahrzeugstunden() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { toast } = useToast();
   const [datum, setDatum] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [reading, setReading] = useState('');
