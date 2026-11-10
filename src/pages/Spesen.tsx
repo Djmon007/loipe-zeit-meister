@@ -75,12 +75,17 @@ export default function Spesen() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const validTypes = ['image/jpeg', 'image/png', 'image/heic', 'application/pdf'];
-      if (!validTypes.includes(file.type)) {
-        toast({ title: 'Ungültiger Dateityp', description: 'Bitte JPEG, PNG oder PDF hochladen', variant: 'destructive' });
+      const validTypes = ['image/jpeg', 'image/png', 'image/heic', 'image/heif', 'image/webp', 'image/avif', 'application/pdf'];
+      const extension = file.name.split('.').pop()?.toLowerCase() || '';
+      const validExtensions = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'avif', 'pdf'];
+      const isSupportedImage = file.type.startsWith('image/') && file.type !== 'image/svg+xml';
+      if (!validTypes.includes(file.type) && !isSupportedImage && !(file.type === '' && validExtensions.includes(extension))) {
+        e.currentTarget.value = '';
+        toast({ title: 'Ungültiger Dateityp', description: 'Bitte ein Bild oder eine PDF-Datei auswählen.', variant: 'destructive' });
         return;
       }
       if (file.size > 10 * 1024 * 1024) {
+        e.currentTarget.value = '';
         toast({ title: 'Datei zu gross', description: 'Maximale Dateigrösse ist 10 MB', variant: 'destructive' });
         return;
       }
@@ -94,12 +99,23 @@ export default function Spesen() {
     setUploading(true);
 
     try {
-      const fileExt = selectedFile.name.split('.').pop();
-      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+      const nameParts = selectedFile.name.split('.');
+      const namedExtension = nameParts.length > 1 ? nameParts.pop()?.toLowerCase() : undefined;
+      const mimeExtensions: Record<string, string> = {
+        'image/jpeg': 'jpg', 'image/png': 'png', 'image/heic': 'heic',
+        'image/heif': 'heif', 'image/webp': 'webp', 'image/avif': 'avif', 'application/pdf': 'pdf',
+      };
+      const fileExt = namedExtension || mimeExtensions[selectedFile.type] || 'jpg';
+      const extensionMimeTypes: Record<string, string> = {
+        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic',
+        heif: 'image/heif', webp: 'image/webp', avif: 'image/avif', pdf: 'application/pdf',
+      };
+      const contentType = selectedFile.type || extensionMimeTypes[fileExt];
+      const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('belege')
-        .upload(fileName, selectedFile);
+        .upload(fileName, selectedFile, { contentType });
 
       if (uploadError) throw uploadError;
 
@@ -113,7 +129,10 @@ export default function Spesen() {
         beleg_filename: selectedFile.name,
       });
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        await supabase.storage.from('belege').remove([fileName]);
+        throw dbError;
+      }
 
       setSelectedFile(null);
       setBeschreibung('');
@@ -125,7 +144,13 @@ export default function Spesen() {
       toast({ title: 'Beleg hochgeladen', description: 'Spesen wurden erfasst' });
     } catch (error) {
       console.error('Upload error:', error);
-      toast({ title: 'Fehler', description: 'Beleg konnte nicht hochgeladen werden', variant: 'destructive' });
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      const description = message.includes('row-level security') || message.includes('permission')
+        ? 'Bitte melden Sie sich erneut an und versuchen Sie es noch einmal.'
+        : message.includes('fetch') || message.includes('network')
+          ? 'Keine Verbindung. Bitte prüfen Sie das Internet und versuchen Sie es erneut.'
+          : 'Beleg konnte nicht hochgeladen werden. Bitte versuchen Sie es erneut.';
+      toast({ title: 'Fehler beim Hochladen', description, variant: 'destructive' });
     } finally {
       setUploading(false);
     }
@@ -240,7 +265,7 @@ export default function Spesen() {
                   <Upload className="h-4 w-4" /> Datei
                 </Button>
               </div>
-              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,application/pdf" onChange={handleFileSelect} className="hidden" />
+              <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.heic,.heif,.webp,.avif,.pdf" onChange={handleFileSelect} className="hidden" />
               <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} className="hidden" />
             </div>
 

@@ -14,3 +14,5 @@
 - [x] Fahrzeugstunden-Routen, Profiländerungen und Berechtigungen prüfen
 - [x] Bearbeiten-Symbol für eigene Fahrzeugstunden-Einträge ergänzen
 - [x] Namen der angemeldeten Person in der Fahrzeugstunden-Liste anzeigen
+- [x] Löschen eigener Fahrzeugstunden-Einträge mit Bestätigung ergänzen
+- [x] Upload von Smartphone-Fotos für Spesen-Belege robuster machen

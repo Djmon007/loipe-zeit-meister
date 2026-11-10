@@ -6,13 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { isVehicleHoursNondecreasing, parseVehicleHours } from '@/lib/vehicleHours';
 import { format, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { Gauge, Loader2, Pencil } from 'lucide-react';
+import { Gauge, Loader2, Pencil, Trash2 } from 'lucide-react';
 
 interface VehicleEntry {
   id: string;
@@ -115,6 +116,24 @@ export default function Fahrzeugstunden() {
     await fetchEntries();
   };
 
+  const deleteEntry = async () => {
+    if (!editingEntry || !user) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from('vehicle_hours_entries')
+      .delete()
+      .eq('id', editingEntry.id)
+      .eq('user_id', user.id);
+    setSaving(false);
+    if (error) {
+      toast({ title: 'Eintrag nicht gelöscht', description: 'Bitte versuchen Sie es erneut.', variant: 'destructive' });
+      return;
+    }
+    setEditingEntry(null);
+    toast({ title: 'Gelöscht', description: 'Fahrzeugstunden-Eintrag wurde entfernt.' });
+    await fetchEntries();
+  };
+
   return (
     <AppLayout title="Fahrzeugstunden">
       <div className="mx-auto max-w-3xl space-y-6">
@@ -173,6 +192,23 @@ export default function Fahrzeugstunden() {
             <div className="space-y-2"><Label htmlFor="edit-vehicle-hours">Zählerstand</Label><Input id="edit-vehicle-hours" type="text" inputMode="decimal" value={editReading} onChange={(event) => setEditReading(event.target.value)} /></div>
           </div>
           <DialogFooter>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button type="button" variant="destructive" className="gap-2" disabled={saving}>
+                  <Trash2 className="h-4 w-4" /> Eintrag löschen
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Eintrag löschen?</AlertDialogTitle>
+                  <AlertDialogDescription>Dieser Fahrzeugstunden-Eintrag wird unwiderruflich gelöscht.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                  <AlertDialogAction onClick={deleteEntry}>Löschen</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             <Button type="button" variant="outline" onClick={() => setEditingEntry(null)} disabled={saving}>Abbrechen</Button>
             <Button type="button" onClick={saveEdit} disabled={saving || !editDate}>
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
