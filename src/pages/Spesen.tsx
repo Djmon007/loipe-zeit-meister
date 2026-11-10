@@ -81,7 +81,7 @@ export default function Spesen() {
       const isSupportedImage = file.type.startsWith('image/') && file.type !== 'image/svg+xml';
       if (!validTypes.includes(file.type) && !isSupportedImage && !(file.type === '' && validExtensions.includes(extension))) {
         e.currentTarget.value = '';
-        toast({ title: 'Ungültiger Dateityp', description: 'Bitte JPEG, PNG oder PDF hochladen', variant: 'destructive' });
+        toast({ title: 'Ungültiger Dateityp', description: 'Bitte ein Bild oder eine PDF-Datei auswählen.', variant: 'destructive' });
         return;
       }
       if (file.size > 10 * 1024 * 1024) {
@@ -106,11 +106,16 @@ export default function Spesen() {
         'image/heif': 'heif', 'image/webp': 'webp', 'image/avif': 'avif', 'application/pdf': 'pdf',
       };
       const fileExt = namedExtension || mimeExtensions[selectedFile.type] || 'jpg';
+      const extensionMimeTypes: Record<string, string> = {
+        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic',
+        heif: 'image/heif', webp: 'image/webp', avif: 'image/avif', pdf: 'application/pdf',
+      };
+      const contentType = selectedFile.type || extensionMimeTypes[fileExt];
       const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('belege')
-        .upload(fileName, selectedFile, { contentType: selectedFile.type || undefined });
+        .upload(fileName, selectedFile, { contentType });
 
       if (uploadError) throw uploadError;
 
@@ -124,7 +129,10 @@ export default function Spesen() {
         beleg_filename: selectedFile.name,
       });
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        await supabase.storage.from('belege').remove([fileName]);
+        throw dbError;
+      }
 
       setSelectedFile(null);
       setBeschreibung('');
