@@ -43,6 +43,13 @@
       "when": 1794222547622,
       "tag": "0005_allow_users_to_edit_own_vehicle_hours",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794319778457,
+      "tag": "0006_allow_users_to_delete_own_vehicle_hours",
+      "breakpoints": true
     }
   ]
 }
