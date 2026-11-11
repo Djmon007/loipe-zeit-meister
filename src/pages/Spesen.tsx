@@ -91,6 +91,14 @@ export default function Spesen() {
       }
       setSelectedFile(file);
     }
+    // Reset the native input so selecting the same file again still fires change.
+    e.currentTarget.value = '';
+  };
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   const uploadExpense = async () => {
@@ -258,26 +266,36 @@ export default function Spesen() {
             <div className="space-y-2">
               <Label>Beleg</Label>
               <div className="flex gap-3">
-                <Button type="button" variant="outline" className="flex-1 gap-2" onClick={() => cameraInputRef.current?.click()}>
-                  <Camera className="h-4 w-4" /> Foto
+                <Button asChild variant="outline" className="flex-1 gap-2">
+                  <label htmlFor="receipt-camera" className="cursor-pointer">
+                    <Camera className="h-4 w-4" /> Foto
+                  </label>
                 </Button>
-                <Button type="button" variant="outline" className="flex-1 gap-2" onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="h-4 w-4" /> Datei
+                <Button asChild variant="outline" className="flex-1 gap-2">
+                  <label htmlFor="receipt-file" className="cursor-pointer">
+                    <Upload className="h-4 w-4" /> Datei
+                  </label>
                 </Button>
               </div>
-              <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.heic,.heif,.webp,.avif,.pdf" onChange={handleFileSelect} className="hidden" />
-              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} className="hidden" />
+              <input id="receipt-file" ref={fileInputRef} type="file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.heic,.heif,.webp,.avif,.pdf" onChange={handleFileSelect} className="sr-only" />
+              <input id="receipt-camera" ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} className="sr-only" />
             </div>
 
             {selectedFile && (
               <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
                 <FileText className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm truncate flex-1">{selectedFile.name}</span>
-                <Button variant="ghost" size="sm" onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; if (cameraInputRef.current) cameraInputRef.current.value = ''; }}>✕</Button>
+                <Button type="button" variant="ghost" size="icon" aria-label="Ausgewählten Beleg entfernen" onClick={clearSelectedFile}>×</Button>
               </div>
             )}
 
-            <Button onClick={uploadExpense} disabled={uploading || !selectedFile} className="w-full gap-2">
+            {!selectedFile && (
+              <p className="text-sm text-muted-foreground" aria-live="polite">
+                Bitte zuerst ein Foto aufnehmen oder eine Datei auswählen.
+              </p>
+            )}
+
+            <Button type="button" onClick={uploadExpense} disabled={uploading || !selectedFile} className="w-full gap-2">
               {uploading ? (<><Loader2 className="h-4 w-4 animate-spin" /> Hochladen...</>) : (<><Upload className="h-4 w-4" /> Beleg speichern</>)}
             </Button>
           </CardContent>
