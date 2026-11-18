@@ -37,6 +37,7 @@ export default function Spesen() {
   const [beschreibung, setBeschreibung] = useState('');
   const [betrag, setBetrag] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -72,27 +73,39 @@ export default function Spesen() {
     fetchExpenses();
   }, [fetchExpenses]);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const validTypes = ['image/jpeg', 'image/png', 'image/heic', 'image/heif', 'image/webp', 'image/avif', 'application/pdf'];
-      const extension = file.name.split('.').pop()?.toLowerCase() || '';
-      const validExtensions = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'avif', 'pdf'];
-      const isSupportedImage = file.type.startsWith('image/') && file.type !== 'image/svg+xml';
-      if (!validTypes.includes(file.type) && !isSupportedImage && !(file.type === '' && validExtensions.includes(extension))) {
-        e.currentTarget.value = '';
-        toast({ title: 'Ungültiger Dateityp', description: 'Bitte ein Bild oder eine PDF-Datei auswählen.', variant: 'destructive' });
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        e.currentTarget.value = '';
-        toast({ title: 'Datei zu gross', description: 'Maximale Dateigrösse ist 10 MB', variant: 'destructive' });
-        return;
-      }
-      setSelectedFile(file);
+  useEffect(() => {
+    if (!selectedFile || selectedFile.type === 'application/pdf') {
+      setPreviewUrl(null);
+      return;
     }
-    // Reset the native input so selecting the same file again still fires change.
-    e.currentTarget.value = '';
+
+    const objectUrl = URL.createObjectURL(selectedFile);
+    setPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [selectedFile]);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const file = input.files?.item(0);
+    // Reset immediately so the same photo can be selected again on mobile.
+    input.value = '';
+    if (!file) return;
+
+    const validTypes = ['image/jpeg', 'image/png', 'image/heic', 'image/heif', 'image/webp', 'image/avif', 'application/pdf'];
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+    const validExtensions = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'avif', 'pdf'];
+    const isSupportedImage = file.type.startsWith('image/') && file.type !== 'image/svg+xml';
+    const isCameraCapture = input === cameraInputRef.current;
+    const hasUnknownImageMetadata = !file.type && !extension;
+    if (!validTypes.includes(file.type) && !isSupportedImage && !(file.type === '' && validExtensions.includes(extension)) && !(isCameraCapture && hasUnknownImageMetadata)) {
+      toast({ title: 'Ungültiger Dateityp', description: 'Bitte ein Bild oder eine PDF-Datei auswählen.', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: 'Datei zu gross', description: 'Maximale Dateigrösse ist 10 MB', variant: 'destructive' });
+      return;
+    }
+    setSelectedFile(file);
   };
 
   const clearSelectedFile = () => {
@@ -267,23 +280,27 @@ export default function Spesen() {
               <Label>Beleg</Label>
               <div className="flex gap-3">
                 <Button asChild variant="outline" className="flex-1 gap-2">
-                  <label htmlFor="receipt-camera" className="cursor-pointer">
+                  <button type="button" onClick={() => cameraInputRef.current?.click()}>
                     <Camera className="h-4 w-4" /> Foto
-                  </label>
+                  </button>
                 </Button>
                 <Button asChild variant="outline" className="flex-1 gap-2">
-                  <label htmlFor="receipt-file" className="cursor-pointer">
+                  <button type="button" onClick={() => fileInputRef.current?.click()}>
                     <Upload className="h-4 w-4" /> Datei
-                  </label>
+                  </button>
                 </Button>
               </div>
-              <input id="receipt-file" ref={fileInputRef} type="file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.heic,.heif,.webp,.avif,.pdf" onChange={handleFileSelect} className="sr-only" />
-              <input id="receipt-camera" ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} className="sr-only" />
+              <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.heic,.heif,.webp,.avif,.pdf" aria-label="Belegdatei auswählen" onChange={handleFileSelect} className="sr-only" />
+              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" aria-label="Belegfoto aufnehmen" onChange={handleFileSelect} className="sr-only" />
             </div>
 
             {selectedFile && (
               <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                <FileText className="h-4 w-4 text-muted-foreground" />
+                {previewUrl ? (
+                  <img src={previewUrl} alt="Vorschau des Belegfotos" className="h-14 w-14 rounded object-cover border border-border" />
+                ) : (
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                )}
                 <span className="text-sm truncate flex-1">{selectedFile.name}</span>
                 <Button type="button" variant="ghost" size="icon" aria-label="Ausgewählten Beleg entfernen" onClick={clearSelectedFile}>×</Button>
               </div>
