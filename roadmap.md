@@ -16,3 +16,4 @@
 - [x] Namen der angemeldeten Person in der Fahrzeugstunden-Liste anzeigen
 - [x] Löschen eigener Fahrzeugstunden-Einträge mit Bestätigung ergänzen
 - [x] Upload von Smartphone-Fotos für Spesen-Belege robuster machen
+- [x] Belegbilder im Adminbereich ohne fehlerhafte Seitenlinks öffnen; Linktests erfolgreich (Prüfung mit echtem Admin-Beleg mangels Sitzung nicht möglich)

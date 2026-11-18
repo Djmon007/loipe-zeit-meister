@@ -16,6 +16,7 @@ import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-f
 import { de } from 'date-fns/locale';
 import { getSeasonDates, getSeasonLabel } from '@/lib/seasonUtils';
 import { useSeasons } from '@/hooks/useSeasons';
+import { ReceiptViewer } from '@/components/ReceiptViewer';
 
 interface KasseEntry {
   id: string;
@@ -311,14 +312,7 @@ export default function AdminKasse() {
                       <TableCell>{entry.beschreibung || '-'}</TableCell>
                       <TableCell>
                         {entry.beleg_url ? (
-                          <a
-                            href={entry.beleg_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline"
-                          >
-                            Ansehen
-                          </a>
+                          <ReceiptViewer reference={entry.beleg_url} />
                         ) : (
                           '-'
                         )}

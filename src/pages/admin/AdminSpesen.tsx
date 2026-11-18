@@ -11,11 +11,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Receipt, ExternalLink, Calendar, Pencil, Trash2 } from 'lucide-react';
+import { Download, Receipt, Calendar, Pencil, Trash2 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { getSeasonDates, getSeasonLabel } from '@/lib/seasonUtils';
 import { useSeasons } from '@/hooks/useSeasons';
+import { ReceiptViewer } from '@/components/ReceiptViewer';
 
 interface Profile {
   id: string;
@@ -303,12 +304,7 @@ export default function AdminSpesen() {
                         <TableCell>{entry.beschreibung || '–'}</TableCell>
                         <TableCell>
                           {entry.beleg_url ? (
-                            <Button variant="ghost" size="sm" asChild className="gap-1 h-8">
-                              <a href={entry.beleg_url} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink className="h-3 w-3" />
-                                Ansehen
-                              </a>
-                            </Button>
+                            <ReceiptViewer reference={entry.beleg_url} />
                           ) : '–'}
                         </TableCell>
                         <TableCell>
