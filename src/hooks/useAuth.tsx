@@ -33,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let alive = true;
     let authRequest = 0;
+    let hydratedUserId: string | null = null;
 
     const hydrateSession = async (session: Session | null) => {
       const currentRequest = ++authRequest;
@@ -40,7 +41,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        setLoading(true);
+        // Only block the UI on first sign-in or user switch. Token refreshes
+        // (e.g. when returning from the phone camera) must not unmount pages,
+        // otherwise unsaved form state such as a selected receipt photo is lost.
+        const isSameUser = hydratedUserId === session.user.id;
+        if (!isSameUser) setLoading(true);
         const [nextProfile, nextIsAdmin] = await Promise.all([
           fetchProfile(session.user.id),
           checkAdminRole(session.user.id),
@@ -48,9 +53,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (alive && currentRequest === authRequest) {
           setProfile(nextProfile);
           setIsAdmin(nextIsAdmin);
+          hydratedUserId = session.user.id;
           setLoading(false);
         }
       } else if (alive && currentRequest === authRequest) {
+        hydratedUserId = null;
         setProfile(null);
         setIsAdmin(false);
         setLoading(false);
