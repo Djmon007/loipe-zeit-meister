@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { CameraCapture } from '@/components/CameraCapture';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Receipt, Upload, Camera, FileText, Loader2, Pencil, Trash2 } from 'lucide-react';
@@ -38,6 +39,13 @@ export default function Spesen() {
   const [betrag, setBetrag] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+
+  // Fallback to the system camera app only when the in-app camera is unavailable.
+  const handleCameraUnavailable = useCallback(() => {
+    setCameraOpen(false);
+    cameraInputRef.current?.click();
+  }, []);
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -280,7 +288,7 @@ export default function Spesen() {
               <Label>Beleg</Label>
               <div className="flex gap-3">
                 <Button asChild variant="outline" className="flex-1 gap-2">
-                  <button type="button" onClick={() => cameraInputRef.current?.click()}>
+                  <button type="button" onClick={() => setCameraOpen(true)}>
                     <Camera className="h-4 w-4" /> Foto
                   </button>
                 </Button>
@@ -293,6 +301,13 @@ export default function Spesen() {
               <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.jpg,.jpeg,.png,.heic,.heif,.webp,.avif,.pdf" aria-label="Belegdatei auswählen" onChange={handleFileSelect} className="sr-only" />
               <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" aria-label="Belegfoto aufnehmen" onChange={handleFileSelect} className="sr-only" />
             </div>
+
+            <CameraCapture
+              open={cameraOpen}
+              onOpenChange={setCameraOpen}
+              onCapture={(file) => setSelectedFile(file)}
+              onUnavailable={handleCameraUnavailable}
+            />
 
             {selectedFile && (
               <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
